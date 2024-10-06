@@ -55,7 +55,6 @@
 #include <QApplication>
 #include <QDesktopServices>
 #include <QStandardPaths>
-#include <QDesktopWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGridLayout>
@@ -1440,9 +1439,7 @@ void MainWindow::showSettings() {
         int result = dialog.exec();
         if (result == QDialog::Accepted)
             mMain->applySettings();
-    } catch (std::exception const& e) {
-        qWarning() << "Error while executing settings dialog:" << e.what();
-    }
+    } catch (std::exception const& e) { qWarning() << "Error while executing settings dialog:" << e.what(); }
     showingSettings = false;
 }
 
