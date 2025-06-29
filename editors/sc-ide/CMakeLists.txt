@@ -405,9 +405,9 @@ if(APPLE)
 
 elseif(WIN32)
 
-    if(NOT MSVC)
+	if(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
         set_target_properties(SuperCollider PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif(NOT MSVC)
+	endif(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
 
     if(MSYS)
       add_custom_command(TARGET SuperCollider
@@ -434,7 +434,12 @@ elseif(WIN32)
     install(TARGETS SuperCollider
         DESTINATION "${SC_WIN_BUNDLE_NAME}"
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
-    )
+	    RUNTIME_DEPENDENCIES
+	    # exclude whatever these are?
+	    PRE_EXCLUDE_REGEXES "api-ms-" "ext-ms-" "qt6"
+	    # exclude 32 bit versions of dependencies maybe?
+	    POST_EXCLUDE_REGEXES ".*system32/.*\\.dll" "qt6"
+	)
     install(FILES ${translations}
         DESTINATION "${SC_WIN_BUNDLE_NAME}/translations"
     )
@@ -455,12 +460,12 @@ elseif(WIN32)
 
     # run fixup_bundle prior to deployment to get FFTW, libsndfile, MSVC, and Qt libs
     # will run windeployqt afterward to auto-deploy QtWebEngine dependencies
-    install(CODE
-        "
-            include(BundleUtilities)
-            fixup_bundle(\"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/sclang.exe\" \"\" \"${SC_WIN_DLL_DIRS}\")
-        "
-    )
+    # install(CODE
+    #     "
+    #         include(BundleUtilities)
+    #         fixup_bundle(\"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/sclang.exe\" \"\" \"${SC_WIN_DLL_DIRS}\")
+    #     "
+    # )
 
 
 else()
@@ -561,7 +566,7 @@ if(APPLE OR WIN32)
         find_program(DEPLOY_PROG windeployqt PATHS ${CMAKE_PREFIX_PATH})
         set(DEPLOY_CMD "\"${DEPLOY_PROG}\"
                 --verbose 1 --no-compiler-runtime
-                \"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/sclang.exe\"
+                \"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/scide.exe\"
             ")
         set(VERIFY_CMD "")
     endif()

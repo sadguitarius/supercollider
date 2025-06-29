@@ -373,9 +373,9 @@ if(APPLE)
             )
     endif()
 elseif(WIN32)
-    if(NOT MSVC)
+	if(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
         set_target_properties(sclang PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif(NOT MSVC)
+	endif(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
 
     target_compile_definitions(sclang PUBLIC UNICODE _UNICODE)
 
@@ -421,7 +421,12 @@ elseif(WIN32)
     install(TARGETS sclang
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
         DESTINATION "${SC_WIN_BUNDLE_NAME}"
-    )
+	    RUNTIME_DEPENDENCIES
+	    # exclude whatever these are?
+	    PRE_EXCLUDE_REGEXES "api-ms-" "ext-ms-" "qt6"
+	    # exclude 32 bit versions of dependencies maybe?
+	    POST_EXCLUDE_REGEXES ".*system32/.*\\.dll" "qt6"
+	)
 
     if(SC_QT)
         SET(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}")

@@ -224,10 +224,10 @@ add_executable(supernova
 target_link_libraries(supernova libsupernova)
 
 if(WIN32)
-    if(NOT MSVC)
+	if(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
       target_link_libraries(supernova "-municode")
       set_target_properties(supernova libsupernova PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif(NOT MSVC)
+	endif(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
 
     if(FFTW3F_FOUND)
       file(GLOB FFTW3F_DLL "${FFTW3F_LIBRARY_DIR}/*fftw3f*.dll")

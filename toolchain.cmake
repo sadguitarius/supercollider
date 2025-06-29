@@ -1,0 +1,8 @@
+set(QT_HOME C:/Qt/6.8.0)
+set(QT_FLAVOUR msvc2022_64)
+set(QT_PREFIX_PATH ${QT_HOME}/${QT_FLAVOUR})
+set(QT_VERSION_MAJOR 6)
+set(SNDFILE_PREFIX_PATH C:/Users/sadguitarius/src/source/supercollider_build/x64/libsndfile)
+set(FFTW_PREFIX_PATH C:/Users/sadguitarius/src/source/supercollider_build/x64/fftw)
+set(CMAKE_PREFIX_PATH ${QT_PREFIX_PATH};${SNDFILE_PREFIX_PATH};${FFTW_PREFIX_PATH})
+set(SNDFILE_LIBRARY_DIR C:/Users/sadguitarius/src/source/supercollider_build/x64/libsndfile/bin)
