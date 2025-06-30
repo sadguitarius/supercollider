@@ -1,4 +1,4 @@
-set(QT_HOME C:/Qt/6.8.0)
+set(QT_HOME C:/Qt/6.7.3)
 set(QT_FLAVOUR msvc2022_64)
 set(QT_PREFIX_PATH ${QT_HOME}/${QT_FLAVOUR})
 set(QT_VERSION_MAJOR 6)
