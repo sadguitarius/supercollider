@@ -43,9 +43,9 @@ Release dates of 3.x versions:
 - 3.11: 2020-03-08
 - 3.12: 2021-08-02
 - 3.13: 2023-02-19
-- 3.14: 2025-06-06
+- 3.14: 2025-07-26
 
-3.14.0 (2025-06-06)
+3.14.0 (2025-07-26)
 ===================
 
 ### Notable changes and additions
@@ -209,7 +209,7 @@ This change makes a number of new things possible, e.g.
 - Add helper for reallocstack and correct objectPerformArgsImpl by @JordanHendersonMusic in https://github.com/supercollider/supercollider/pull/6731
 - Use fix width integers for `long` and `long long` by @JordanHendersonMusic in https://github.com/supercollider/supercollider/pull/6732
 - PyrGC: Fix GC segfault caused by uncollected temporary function objects by placing an upper limit on un-scanned objects.  by @JordanHendersonMusic in https://github.com/supercollider/supercollider/pull/6261
-- Assert no uninlined functions in class lib. by @JordanHendersonMusic in https://github.com/supercollider/supercollider/pull/6916
+- Assert no uninlined functions in class lib. by @JordanHendersonMusic in https://github.com/supercollider/supercollider/pull/6916, https://github.com/supercollider/supercollider/pull/6935 and https://github.com/supercollider/supercollider/pull/7062
 - Implement replace regex using boost by @JordanHendersonMusic in https://github.com/supercollider/supercollider/pull/6213
 - `slotStrVal` implementation is fixed by @Spacechild1 in https://github.com/supercollider/supercollider/pull/6156
 - QtCollider: QcTreeWidget: fix instance methods by @sadguitarius in https://github.com/supercollider/supercollider/pull/6521
@@ -266,7 +266,7 @@ This change makes a number of new things possible, e.g.
 - CoreAudio backend: don't try to query input device when numInputBusChannels = 0 by @dyfer in https://github.com/supercollider/supercollider/pull/6716
 - portaudio/WASAPI: enable automatic sample rate conversion by @Spacechild1 in https://github.com/supercollider/supercollider/pull/6899 / fix PortAudio hostAPI stream info (Win32) by @dyfer in https://github.com/supercollider/supercollider/pull/6905
 - Increase UDP socket buffer size and fallback to 1MB by @xunil-cloud in https://github.com/supercollider/supercollider/pull/6564 and https://github.com/supercollider/supercollider/pull/6989
-- Select WASAPI as default device on Windows by @dyfer in https://github.com/supercollider/supercollider/pull/6994
+- Use WASAPI as default backend on Windows by @dyfer in https://github.com/supercollider/supercollider/pull/6994 and https://github.com/supercollider/supercollider/pull/7051
 
 ### scsynth and supernova: Fixed
 
@@ -400,6 +400,13 @@ This change makes a number of new things possible, e.g.
 ### CI changes by
 
 @dyfer, @capital-G, @elgiano, @scztt, @silvanocerza
+
+3.13.1 (2025-03-15)
+===================
+
+### sclang: Fixed
+
+Linux only: Reverted memory allocation bug when using HID, see <https://github.com/supercollider/supercollider/issues/6016>
 
 3.13.0 (2023-02-19)
 ===================
