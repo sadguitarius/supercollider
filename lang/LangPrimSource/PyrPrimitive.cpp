@@ -3586,6 +3586,8 @@ void doPrimitive(VMGlobals* g, PyrMethod* meth, int numArgsPushed) {
     g->primitiveMethod = meth;
     g->args = g->sp - numArgsNeeded;
     int err;
+
+    g->gc->enterDelayedCollectionContext();
     try {
 #ifdef GC_SANITYCHECK
         g->gc->SanityCheck();
@@ -3601,6 +3603,9 @@ void doPrimitive(VMGlobals* g, PyrMethod* meth, int numArgsPushed) {
         g->lastExceptions[g->thread] = std::make_pair(nullptr, meth);
         err = errException;
     }
+    g->gc->exitDelayedCollectionContext();
+
+
     if (err <= errNone)
         g->sp -= g->numpop;
     else {
@@ -3635,6 +3640,8 @@ void doPrimitiveWithKeys(VMGlobals* g, PyrMethod* meth, int allArgsPushed, int n
 
     if (def->keyArgs && numKeyArgsPushed) {
         g->numpop = allArgsPushed - 1;
+
+        g->gc->enterDelayedCollectionContext();
         try {
             err = ((PrimitiveWithKeysHandler)def[1].func)(g, allArgsPushed, numKeyArgsPushed);
         } catch (std::exception& ex) {
@@ -3644,6 +3651,8 @@ void doPrimitiveWithKeys(VMGlobals* g, PyrMethod* meth, int allArgsPushed, int n
             g->lastExceptions[g->thread] = std::make_pair(nullptr, meth);
             err = errException;
         }
+        g->gc->exitDelayedCollectionContext();
+
         if (err <= errNone)
             g->sp -= g->numpop;
         else {
