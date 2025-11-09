@@ -143,7 +143,8 @@ jobs:
           mkdir -p $ASIO_PATH && cd $ASIO_PATH
           curl -L https://www.steinberg.net/asiosdk -o asio.zip
           7z x asio.zip -y
-          mv asiosdk_* $GITHUB_WORKSPACE/external_libraries/portaudio/asiosdk
+          shopt -s nocaseglob
+          mv asiosdk* $GITHUB_WORKSPACE/external_libraries/portaudio/asiosdk
 
       - name: install readline
         if: matrix.vcpkg-triplet
@@ -171,7 +172,7 @@ jobs:
         run: cd $INSTALL_PATH && 7z a $ARTIFACT_FILE.zip -tzip SuperCollider # this assumes that we end up with the build in the folder SuperCollider
 
       - name: upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: matrix.artifact-suffix
         with:
           name: ${{ env.ARTIFACT_FILE }}
@@ -185,7 +186,7 @@ jobs:
           cmake --build $BUILD_PATH --config Release --target installer
 
       - name: upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: matrix.create-installer == true
         with:
           name: ${{ env.INSTALLER_FILE }}
