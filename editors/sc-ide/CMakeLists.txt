@@ -32,10 +32,6 @@ endif()
 
 find_package(Qt${QT_VERSION_MAJOR} ${REQUIRED_QT_VERSION} COMPONENTS ${QT_IDE_COMPONENTS} REQUIRED)
 
-if(${CMAKE_COMPILER_IS_GNUCXX})
-    add_definitions(-Wreorder)
-endif()
-
 if (APPLE)
   include (${CMAKE_SOURCE_DIR}/cmake_modules/MacAppFolder.cmake)
   set(ide_name ${scappbundlename})
@@ -279,12 +275,6 @@ endif()
 # This sets up the exe icon for windows.
 if(WIN32)
  set(RES_FILES ${CMAKE_SOURCE_DIR}/platform/windows/Resources/scide.rc)
- if(MINGW OR MSYS)
- set(CMAKE_RC_COMPILER_INIT windres)
- ENABLE_LANGUAGE(RC)
- SET(CMAKE_RC_COMPILE_OBJECT
- "<CMAKE_RC_COMPILER> -O coff <DEFINES> -i <SOURCE> -o <OBJECT>")
- endif(MINGW OR MSYS)
 endif(WIN32)
 
 
@@ -319,6 +309,10 @@ target_include_directories(libscide PUBLIC
 add_executable( SuperCollider MACOSX_BUNDLE core/main_function.cpp ${RES_FILES} ${AdditionalBundleSources} ${translations})
 
 set_target_properties(libscide PROPERTIES PREFIX "")
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(libscide PRIVATE "-Wreorder")
+endif()
 
 if(APPLE)
     set_target_properties(SuperCollider PROPERTIES OUTPUT_NAME "${ide_name}")

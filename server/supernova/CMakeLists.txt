@@ -1,16 +1,3 @@
-if(CMAKE_COMPILER_IS_GNUCXX)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-depth-4096")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fomit-frame-pointer")
-
-  if(APPLE)
-    if(CMAKE_SIZEOF_VOID_P MATCHES "4")
-      # cmpxchg8b is available on all intel apples
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=i686 -msse -msse2 -mfpmath=sse")
-    endif()
-  endif()
-
-endif(CMAKE_COMPILER_IS_GNUCXX)
-
 # here we choose who provides us with the FFT lib
 # this is done independently for scsynth and supernova
 # for historical reasons, as the vDSP implementation
@@ -84,8 +71,7 @@ else()
   add_library (libsupernova STATIC ${libsupernova_src})
 endif()
 
-if(LINUX AND CMAKE_COMPILER_IS_CLANG)
-    message(STATUS "Clang on Linux detected, linking to libatomic")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR (LINUX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
     target_link_libraries(libsupernova atomic)
 endif()
 if(NOT WIN32)
@@ -202,12 +188,6 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
 endif()
 
 target_link_libraries(libsupernova Boost::program_options)
-
-if(CMAKE_COMPILER_IS_GNUCXX)
-    if( ${_gcc_version} VERSION_GREATER 5 )
-      target_link_libraries( libsupernova atomic )
-    endif()
-endif()
 
 if(WIN32)
     target_link_libraries(libsupernova wsock32 ws2_32 winmm)

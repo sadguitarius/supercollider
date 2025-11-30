@@ -206,7 +206,7 @@ TestString : UnitTest {
 	}
 
 	test_largeStringCompileString {
-		var large = String.fill(9000, { |i| "0123456789".wrapAt(i) });
+		var large = String.fill(81920, { |i| "0123456789".wrapAt(i) });
 		var reconstructed = large.asCompileString.interpret;
 		this.assert(large == reconstructed, "A large string's compileString should interpret back to itself");
 	}

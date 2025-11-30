@@ -76,38 +76,9 @@ if (${CMAKE_COMPILER_IS_GNUCXX})
             OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
-    add_compile_options(
-        -Werror=return-type      # Error out if function definitions lack a return type
-        -fschedule-insns2        # Optimize instruction scheduling
-        -fomit-frame-pointer     # Optimize by omitting the frame pointer where possible
-        -fno-math-errno          # Optimize math functions by not setting errno
-        -fno-signaling-nans      # Assume no signaling NaNs for better optimization
-        -fsigned-zeros           # Maintain distinction between -0.0 and +0.0
-        -fno-associative-math    # Prevent reordering of floating-point operations
-    )
-
 	if(${_gcc_version} VERSION_LESS 4.8)
 		message(FATAL_ERROR "SuperCollider requires at least gcc-4.8 when compiled with gcc.")
 	endif()
-
-	if(APPLE)
-        execute_process(
-                COMMAND ${CMAKE_CXX_COMPILER} --version
-                OUTPUT_VARIABLE _gcc_version_info
-                OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-		if ("${_gcc_version_info}" MATCHES "Apple")
-			add_definitions("-fpascal-strings")
-		endif()
-		add_definitions("-D_REENTRANT")
-	elseif(NOT (WIN32 AND NOT CYGWIN))
-		add_definitions("-pthread")
-	endif()
-
-elseif(${CMAKE_CXX_COMPILER} MATCHES icpc)
-	set(CMAKE_COMPILER_IS_INTEL 1)
-	add_definitions(-Wno-unknown-pragmas)
-	add_definitions(-simd)
 
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     set(CMAKE_COMPILER_IS_CLANG 1)
@@ -121,10 +92,6 @@ elseif(UNIX)
 	add_definitions(-DSC_DATA_DIR="${CMAKE_INSTALL_PREFIX}/share/SuperCollider")
 endif()
 
-if(WIN32)
-    add_definitions(-DWIN32_LEAN_AND_MEAN -DNOMINMAX -D_WIN32_WINNT=0x0600)
-endif()
-
 
 #############################################
 # Options
@@ -133,14 +100,6 @@ option(FINAL_BUILD "Build as single source file." OFF)
 option(USE_CCACHE "Use ccache if available." ON)
 
 option(FFT_GREEN "Use internal 'Green' FFT lib rather than FFTW. (Not recommended.)" OFF)
-
-if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "^AMD64|EM64T|x86_64|X86|i386|i686")
-    option(SSE "Compile with support for SSE instructions." ON)
-    option(SSE2 "Compile with support for SSE2 instructions." ON)
-else() # non-x86 platforms do not have SSE
-    set(SSE OFF)
-    set(SSE2 OFF)
-endif()
 
 set(AUDIOAPI "default" CACHE STRING "Audio API to use (one of {default,coreaudio,jack,portaudio,bela})")
 
@@ -330,6 +289,8 @@ else()
 		add_definitions(-DBOOST_DATE_TIME_NO_LIB -DBOOST_ALL_NO_LIB)
 		# use session manager to set shared memory location, see issue 2409
 		add_definitions(-DBOOST_INTERPROCESS_BOOTSTAMP_IS_SESSION_MANAGER_BASED)
+	else()
+		add_definitions(-DBOOST_ASIO_DISABLE_VISIBILITY -DBOOST_DISABLE_EXPLICIT_SYMBOL_VISIBILITY)
 	endif()
 	add_definitions(-DBOOST_CHRONO_HEADER_ONLY -DBOOST_CONFIG_SUPPRESS_OUTDATED_MESSAGE)
 endif() 
@@ -343,47 +304,117 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 
 #############################################
-# some preprocessor flags
-if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
-	if (SSE)
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   -msse")
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse")
-		if(NOT APPLE AND NOT CMAKE_COMPILER_IS_CLANG)
-			set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpmath=sse")
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpmath=sse")
+# compiler settings - hardware
+
+set(SC_COMPILER_ARCH_FLAGS "" CACHE STRING "Architecture specific compiler flags")
+
+if("${SC_COMPILER_ARCH_FLAGS}" STREQUAL "")
+
+	set(_detected_flags "")
+
+	if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+		if (NATIVE)
+			list(APPEND _detected_flags "-march=native")
+		else()
+			if("x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES AND "arm64" IN_LIST CMAKE_OSX_ARCHITECTURES) # universal binary
+				list(APPEND _detected_flags "-Xarch_x86_64" "-march=haswell" "-Xarch_arm64" "-mcpu=apple-m1")
+			elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+				list(APPEND _detected_flags "-march=haswell")
+			elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
+				list(APPEND _detected_flags "-mcpu=apple-m1")
+			endif()
+		endif()
+
+	elseif(MSVC)
+		if(CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "x64" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "19.40")
+			list(APPEND _detected_flags "/arch:SSE4.2")
+		elseif(CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "ARM64" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "19.40")
+			list(APPEND _detected_flags "/arch:armv8.0")
+		endif()
+
+	elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+		if (NATIVE)
+			list(APPEND _detected_flags "-march=native")
+		else()
+			if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+				if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "12.0" OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "11.0"))
+					list(APPEND _detected_flags "-march=x86-64-v2")
+				else() # fallback for older compilers
+					list(APPEND _detected_flags "-msse4.2")
+				endif()
+			elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+				list(APPEND _detected_flags "-march=armv8-a")
+			elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "armv7")
+				list(APPEND _detected_flags "-march=armv7-a" "-mfpu=neon" "-mfloat-abi=hard")
+			elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "armv6")
+				list(APPEND _detected_flags "-march=armv6" "-mtune=arm1176jzf-s" "-mfpu=vfp" "-mfloat-abi=hard")
+			else()
+				message(STATUS "${CMAKE_CXX_COMPILER_ID}: No hardware optimization flags set for ${CMAKE_SYSTEM_PROCESSOR}")
+			endif()
 		endif()
 	endif()
-	if (SSE2)
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2")
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse2")
-	endif()
-	if (NATIVE)
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
+
+	if(NOT "${_detected_flags}" STREQUAL "")
+		set(SC_COMPILER_ARCH_FLAGS "${_detected_flags}" CACHE STRING "Architecture specific compiler flags" FORCE)
 	endif()
 
-    if(CMAKE_COMPILER_IS_CLANG AND NOT SC_CLANG_USES_LIBSTDCPP)
-        # the default
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-        set(CMAKE_CXX_LINK_FLAGS "${CMAKE_CXX_LINK_FLAGS} -stdlib=libc++")
-    endif()
-
-	if(FORTIFY)
-		add_definitions( -D_FORTIFY_SOURCE=2 )
-	endif()
-
-	add_definitions(-fvisibility=hidden)
 endif()
 
-if (CMAKE_COMPILER_IS_INTEL AND NOT WIN32)
-	if (SSE)
-		add_definitions(-mia32)
-	endif()
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+if(NOT "${SC_COMPILER_ARCH_FLAGS}" STREQUAL "")
+	separate_arguments(SC_COMPILER_ARCH_FLAGS)
+	message(STATUS "Compiler architecture flags: ${SC_COMPILER_ARCH_FLAGS}")
+	add_compile_options(${SC_COMPILER_ARCH_FLAGS})
+endif()
 
-	# disable warnings
-	add_definitions(-diag-disable 170) # pointer points outside of underlying object ... used heavily in sclang
-	add_definitions(-diag-disable 279) # controlling expression is constant
+#############################################
+# other compiler settings
+
+# set default symbol visibility
+SET(CMAKE_CXX_VISIBILITY_PRESET hidden)
+SET(CMAKE_C_VISIBILITY_PRESET hidden)
+SET(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+	add_compile_options(
+		-fno-math-errno          # Optimize math functions by not setting errno
+		-fno-signaling-nans      # Assume no signaling NaNs for better optimization
+	)
+
+	if(APPLE)
+		add_compile_definitions("_REENTRANT")
+	elseif(NOT WIN32)
+		add_compile_options("-pthread")
+	endif()
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+	if(NOT APPLE)
+		add_compile_options(
+			-fno-math-errno      # On Apple and most BSDs, math library functions never set errno, and so -fno-math-errno is the default
+		)
+	endif()
+	if(NOT SC_CLANG_USES_LIBSTDCPP)
+		# the default
+		add_compile_options("-stdlib=libc++")
+		add_link_options("-stdlib=libc++")
+	endif()
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+	add_compile_options(
+		-Werror=return-type      # Error out if function definitions lack a return type
+		-fsigned-zeros           # Maintain distinction between -0.0 and +0.0
+		-fno-associative-math    # Prevent reordering of floating-point operations
+	)
+
+	if(FORTIFY)
+		add_compile_definitions("_FORTIFY_SOURCE=2")
+	endif()
+
+endif()
+
+if(WIN32)
+	add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0600)
 endif()
 
 if(MSVC)
@@ -403,6 +434,8 @@ if(MSVC)
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
   add_compile_options("/Zc:__cplusplus")
 
+# for math operations, we expect the default /fp:precise flag to be used, so that we match settings for gcc/clang
+
 # _ENABLE_ATOMIC_ALIGNMENT_FIX prevents the build from breaking when VS2015 update 2 upwards are used
 # see http://boost.2283326.n4.nabble.com/lockfree-ENABLE-ATOMIC-ALIGNMENT-FIX-for-VS-2015-Update-2-td4685955.html
   add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D_ENABLE_ATOMIC_ALIGNMENT_FIX)
@@ -415,28 +448,8 @@ if (SC_MEMORY_DEBUGGING)
 	add_definitions(-DENABLE_MEMORY_CHECKS)
 endif()
 
-if(MINGW AND (${CMAKE_CXX_COMPILER_VERSION} VERSION_GREATER 4.8.5) AND (${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS 5.3.0))
-# no-strict-aliasing was introduced because of problems with MinGW/GCC 4.9.2
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mstackrealign -fno-strict-aliasing")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign -fno-strict-aliasing")
-elseif(MINGW)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mstackrealign")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mstackrealign")
-endif()
-
-# support for building on Raspberry Pi 1/2/3 and BBB
-if(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_SYSTEM_PROCESSOR STREQUAL "armv7l")
-  foreach(flag CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
-    set(${flag} "${${flag}} -mfloat-abi=hard")
-    set(${flag} "${${flag}} -mfpu=neon")
-  endforeach()
-elseif(CMAKE_COMPILER_IS_GNUCXX AND CMAKE_SYSTEM_PROCESSOR STREQUAL "armv6l")
-  foreach(flag CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
-    set(${flag} "${${flag}} -march=armv6")
-    set(${flag} "${${flag}} -mtune=arm1176jzf-s")
-    set(${flag} "${${flag}} -mfloat-abi=hard")
-    set(${flag} "${${flag}} -mfpu=vfp")
-  endforeach()
+if(MINGW)
+	add_compile_options(-mstackrealign)
 endif()
 
 if (NO_GPL3)
