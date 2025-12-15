@@ -59,39 +59,16 @@ if(WIN32)
         SET(CMAKE_LIBRARY_ARCHITECTURE "x86" CACHE STRING "Architecture of target system (for 32bit)")
     endif()
 
-    # installing to default application-location creates an error (a privileges and/or path syntax problem)
-    if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-        SET(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/Install" CACHE PATH "Cmake install path" FORCE)
-    endif()
-
 endif(WIN32)
 
-#############################################
-# Compiler flags etc
-
-if (${CMAKE_COMPILER_IS_GNUCXX})
-    execute_process(
-            COMMAND ${CMAKE_CXX_COMPILER} -dumpversion
-            OUTPUT_VARIABLE _gcc_version
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-	if(${_gcc_version} VERSION_LESS 4.8)
-		message(FATAL_ERROR "SuperCollider requires at least gcc-4.8 when compiled with gcc.")
-	endif()
-
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    set(CMAKE_COMPILER_IS_CLANG 1)
-endif()
-
-if(APPLE)
+# install settings
+if(APPLE OR WIN32)
 	if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-		set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/Install" CACHE STRING "Cmake install path" FORCE)
+		set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/Install" CACHE PATH "Cmake install path" FORCE)
 	endif()
 elseif(UNIX)
-	add_definitions(-DSC_DATA_DIR="${CMAKE_INSTALL_PREFIX}/share/SuperCollider")
+	add_compile_definitions(SC_DATA_DIR="${CMAKE_INSTALL_PREFIX}/share/SuperCollider")
 endif()
-
 
 #############################################
 # Options
@@ -148,11 +125,11 @@ option(NO_GPL3 "Disable GPL3 code, for pure-GPL2 situations. (Not recommended.)"
 
 option(SCLANG_SERVER "Build with internal server." ON)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     option(NATIVE "Optimize binary for this architecture (binaries may not run on other machines).")
 endif()
 
-if(CMAKE_COMPILER_IS_GNUCXX)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     option(LTO "Use GCC's link time optimizer' (experimental).")
 endif()
 
@@ -176,11 +153,7 @@ endif()
 
 option(FORTIFY "Define -D_FORTIFY_SOURCE=2 to check for programming errors" OFF)
 
-if(MINGW AND (${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS 5.3.0))
-    option(SC_HIDAPI "Build with HID support" OFF)
-else()
-    option(SC_HIDAPI "Build with HID support" ON)
-endif()
+option(SC_HIDAPI "Build with HID support" ON)
 
 option(SC_ABLETON_LINK "Build with Ableton Link support" ON)
 
@@ -192,6 +165,11 @@ if(APPLE)
     option(SC_CODESIGN_AFTER_DEPLOY "Run ad hoc codesigning after creating the app bundle" ON)
     # verify_app fails with official Qt; we'll still use it for Qt from homebrew
     option(SC_VERIFY_APP "Run verify_app on the app bundle" OFF)
+endif()
+
+if(SC_DISABLE_XCODE_CODESIGNING)
+    set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO")
+    set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "")
 endif()
 
 #############################################
@@ -301,8 +279,6 @@ else()
   set(SYSTEM_YAMLCPP OFF)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
-
 #############################################
 # compiler settings - hardware
 
@@ -367,7 +343,9 @@ if(NOT "${SC_COMPILER_ARCH_FLAGS}" STREQUAL "")
 endif()
 
 #############################################
-# other compiler settings
+# other compiler flags
+
+set(CMAKE_CXX_STANDARD 17)
 
 # set default symbol visibility
 SET(CMAKE_CXX_VISIBILITY_PRESET hidden)
@@ -418,16 +396,12 @@ if(WIN32)
 endif()
 
 if(MSVC)
-  foreach(flag CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
-    set(${flag} "${${flag}} /wd4018") # signed/unsigned mismatch
-    set(${flag} "${${flag}} /wd4102") # unreferenced label
-    set(${flag} "${${flag}} /wd4267") # conversion from 'size_t' to 'int', possible loss of data
-    set(${flag} "${${flag}} /wd4244") # conversion from '__int64' to 'int', possible loss of data
-    set(${flag} "${${flag}} /wd4305") # '=' : truncation from 'double' to 'float'
-    set(${flag} "${${flag}} /wd4309") # '=' : truncation of constant value
-    set(${flag} "${${flag}} /wd4800") # forcing value to bool 'true' or 'false' (performance warning)
-    set(${flag} "${${flag}} /wd4996") # The POSIX name for this item is deprecated.
-  endforeach()
+  add_compile_options(
+    /wd4100 # unreferenced parameter
+    /wd4101 # unreferenced local variable
+    /wd4102 # unreferenced label
+    /wd4200 # nonstandard extension used: zero-sized array in struct/union
+  )
 
 # this flag causes MSVC to correctly report __cplusplus, which prevents a compiler error
 # caused by some versions of libsndfile's C++ header redefining nullptr as NULL.
@@ -436,29 +410,18 @@ if(MSVC)
 
 # for math operations, we expect the default /fp:precise flag to be used, so that we match settings for gcc/clang
 
-# _ENABLE_ATOMIC_ALIGNMENT_FIX prevents the build from breaking when VS2015 update 2 upwards are used
-# see http://boost.2283326.n4.nabble.com/lockfree-ENABLE-ATOMIC-ALIGNMENT-FIX-for-VS-2015-Update-2-td4685955.html
-  add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D_ENABLE_ATOMIC_ALIGNMENT_FIX)
-
-  add_compile_options("/EHsc")
 endif(MSVC)
-
-if (SC_MEMORY_DEBUGGING)
-	add_definitions(-DDISABLE_MEMORY_POOLS)
-	add_definitions(-DENABLE_MEMORY_CHECKS)
-endif()
 
 if(MINGW)
 	add_compile_options(-mstackrealign)
 endif()
 
 if (NO_GPL3)
-	add_definitions(-DNO_GPL3)
+	add_compile_definitions(NO_GPL3)
 endif()
 
-if(SC_DISABLE_XCODE_CODESIGNING)
-    set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO")
-    set(CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "")
+if (SC_MEMORY_DEBUGGING)
+	add_compile_definitions(DISABLE_MEMORY_POOLS ENABLE_MEMORY_CHECKS)
 endif()
 
 #############################################

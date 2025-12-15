@@ -71,7 +71,7 @@ if(AUDIOAPI STREQUAL bela)
     find_package(Xenomai REQUIRED)
     find_package(Bela REQUIRED)
     message(STATUS "Found Bela libraries: ${BELA_LIBRARIES}")
-    if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_COMPILER_IS_CLANG)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         # recommended compile flags for beaglebone etc; set here because bela api flag directly implies the architecture
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${BELA_C_FLAGS}")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${BELA_CXX_FLAGS}")
