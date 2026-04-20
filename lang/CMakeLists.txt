@@ -326,6 +326,7 @@ endif()
 
 if(WIN32)
 	target_link_libraries(libsclang wsock32 ws2_32 portmidi iphlpapi)
+	target_compile_definitions(libsclang PRIVATE HAVE_PORTMIDI)
 endif()
 
 if (GC_SANITYCHECK)
@@ -461,3 +462,5 @@ else()
         RUNTIME DESTINATION "bin"
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 endif()
+
+set_property(TARGET libsclang PROPERTY FOLDER Libs)

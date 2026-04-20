@@ -14,6 +14,8 @@ IODesc {
 SynthDesc {
 	classvar <>mdPlugin, <>populateMetadataFunc;
 
+	const <headerMagic = 0x53436766; // 'SCgf'
+
 	var <>name, <>controlNames, <>controlDict;
 	var <>controls, <>inputs, <>outputs;
 	var <>metadata;
@@ -58,18 +60,28 @@ SynthDesc {
 		// path is for metadata -- only this method has direct access to the new SynthDesc
 		// really this should be a private method -- use *read instead
 	*readFile { arg stream, keepDefs=false, dict, path;
-		var numDefs, version;
+		var numDefs, magic, version;
 		dict = dict ?? { IdentityDictionary.new };
-		stream.getInt32; // 'SCgf'
+		magic = stream.getInt32; // 'SCgf'
+		if (magic != headerMagic) {
+			Error("not a SynthDef").throw;
+		};
 		version = stream.getInt32; // version
+		if (version > 3) {
+			"SynthDef version % not supported".format(version).warn;
+			^dict;
+		};
 		numDefs = stream.getInt16;
 		numDefs.do {
 			var desc;
-			if(version >= 2, {
+			case { version == 3 } {
+				desc = SynthDesc.new.readSynthDef3(stream, keepDefs);
+			} { version == 2} {
 				desc = SynthDesc.new.readSynthDef2(stream, keepDefs);
-			},{
+			} {
 				desc = SynthDesc.new.readSynthDef(stream, keepDefs);
-			});
+			};
+
 			dict.put(desc.name.asSymbol, desc);
 				// AbstractMDPlugin dynamically determines the md archive type
 				// from the file extension
@@ -88,8 +100,11 @@ SynthDesc {
 		}
 		^dict
 	}
+
+	// synthdef version 1
 	readSynthDef { arg stream, keepDef=false;
 		var	numControls, numConstants, numControlNames, numUGens, numVariants;
+		var variantValues;
 
 		protect {
 
@@ -140,8 +155,15 @@ SynthDesc {
 
 		numVariants = stream.getInt16;
 		hasVariants = numVariants > 0;
-			// maybe later, read in variant names and values
-			// this is harder than it might seem at first
+		// maybe later, read in variant names and values.
+		// this is harder than it might seem at first.
+		// we could just skip the data, but instead we read it
+		// so we can detect corrupt SynthDef files.
+		variantValues = FloatArray.newClear(numControls);
+		numVariants.do {
+			stream.getPascalString;
+			stream.read(variantValues);
+		};
 
 		def.constants = Dictionary.new;
 		constants.do {|k,i| def.constants.put(k,i) };
@@ -158,9 +180,10 @@ SynthDesc {
 
 	}
 
-	// synthdef ver 2
-	readSynthDef2 { arg stream, keepDef=false;
+	// common method for readSynthDef2 and readSynthDef3
+	prReadSynthDef { arg stream, version, keepDef;
 		var	numControls, numConstants, numControlNames, numUGens, numVariants;
+		var variantValues;
 
 		protect {
 
@@ -211,8 +234,15 @@ SynthDesc {
 
 		numVariants = stream.getInt16;
 		hasVariants = numVariants > 0;
-			// maybe later, read in variant names and values
-			// this is harder than it might seem at first
+		// maybe later, read in variant names and values.
+		// this is harder than it might seem at first.
+		// we could just skip the data, but instead we read it
+		// so we can detect corrupt SynthDef files.
+		variantValues = FloatArray.newClear(numControls);
+		numVariants.do {
+			stream.getPascalString;
+			stream.read(variantValues);
+		};
 
 		def.constants = Dictionary.new;
 		constants.do {|k,i| def.constants.put(k,i) };
@@ -226,7 +256,26 @@ SynthDesc {
 		} {
 			UGen.buildSynthDef = nil;
 		}
+	}
 
+	// synthdef version 2
+	readSynthDef2 { arg stream, keepDef=false;
+		this.prReadSynthDef(stream, 2, keepDef);
+	}
+
+	// synthdef version 3
+	readSynthDef3 { arg stream, keepDef=false;
+		var byteSize, startPos, remaining;
+
+		// every synth definition starts with the byte size (including the field itself)
+		startPos = stream.pos;
+		byteSize = stream.getInt32;
+		this.prReadSynthDef(stream, 3, keepDef);
+		// NB: prReadSynthDef may not read all fields, so we must skip all remaining bytes before we read the next synth definition.
+		remaining = byteSize - (stream.pos - startPos);
+		if (remaining > 0) {
+			stream.skip(remaining);
+		};
 	}
 
 	readUGenSpec { arg stream;
@@ -608,18 +657,27 @@ SynthDescLib {
 	}
 
 	readStream { arg stream, keepDefs=true, path;
-		var numDefs, version, resultSet;
-		stream.getInt32; // 'SCgf'
+		var numDefs, magic, version, resultSet;
+		magic = stream.getInt32; // 'SCgf'
+		if (magic != SynthDesc.headerMagic) {
+			Error("not a SynthDef").throw;
+		};
 		version = stream.getInt32; // version
+		if (version > 3) {
+			"SynthDef version % not supported".format(version).warn;
+			^Set.new;
+		};
 		numDefs = stream.getInt16;
 		resultSet = Set.new(numDefs);
 		numDefs.do {
 			var desc;
-			if(version >= 2, {
+			case { version == 3 } {
+				desc = SynthDesc.new.readSynthDef3(stream, keepDefs);
+			} { version == 2 } {
 				desc = SynthDesc.new.readSynthDef2(stream, keepDefs);
-			},{
+			} {
 				desc = SynthDesc.new.readSynthDef(stream, keepDefs);
-			});
+			};
 			synthDescs.put(desc.name.asSymbol, desc);
 			resultSet.add(desc);
 				// AbstractMDPlugin dynamically determines the md archive type
@@ -642,15 +700,23 @@ SynthDescLib {
 	}
 
 	readDescFromDef {arg stream, keepDef=true, def, metadata;
-		var desc, numDefs, version;
-		stream.getInt32; // 'SCgf'
+		var desc, numDefs, magic, version;
+		magic = stream.getInt32; // 'SCgf'
+		if (magic != SynthDesc.headerMagic) {
+			Error("not a SynthDef").throw;
+		};
 		version = stream.getInt32; // version
+		if (version > 3) {
+			Error("SynthDef version % not supported".format(version)).throw;
+		};
 		numDefs = stream.getInt16; // should be 1
-		if(version >= 2, {
+		case { version == 3 } {
+			desc = SynthDesc.new.readSynthDef3(stream, keepDef);
+		} { version == 2} {
 			desc = SynthDesc.new.readSynthDef2(stream, keepDef);
-		},{
+		} {
 			desc = SynthDesc.new.readSynthDef(stream, keepDef);
-		});
+		};
 		if(keepDef) { desc.def = def };
 		if(metadata.notNil) { desc.metadata = metadata };
 		synthDescs.put(desc.name.asSymbol, desc);

@@ -28,5 +28,6 @@ foreach(test ${test_sources})
                     ${YAMLCPP_INCLUDE_DIR}
 	)
 
-  add_test(interpreter_${test_name} ${EXECUTABLE_OUTPUT_PATH}/${test_name})
+  add_test(interpreter__${test_name} ${test_name})
+  set_property(TARGET ${test_name} PROPERTY FOLDER Test/Interpreter)
 endforeach(test)

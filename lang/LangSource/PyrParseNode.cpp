@@ -18,6 +18,8 @@
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 */
 
+#include "PyrObject.h"
+#include "PyrSlot.h"
 #include "SCBase.h"
 #include "PyrParseNode.h"
 #include "PyrLexer.h"
@@ -28,18 +30,15 @@
 #include "PyrKernelProto.h"
 #include "PyrObjectProto.h"
 #include "GC.h"
-#include <new>
+#include <algorithm>
 #include <string>
 #include <optional>
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <cctype>
-#include "InitAlloc.h"
 #include "PredefinedSymbols.h"
 #include "SimpleStack.h"
-#include "PyrPrimitive.h"
-#include "SC_Win32Utils.h"
 #include "SC_LanguageConfig.hpp"
 #include "SC_Codecvt.hpp"
 #include "SpecialSelectorsOperatorsAndClasses.h"
@@ -106,6 +105,16 @@ const char* nodename[] = { "ClassNode", "ClassExtNode", "MethodNode", "BlockNode
 
                            "ReturnNode", "BlockReturnNode" };
 
+void emitCompilerErrorFromVersion(SemanticVersion version) {
+    if (SC_Version >= version) {
+        compileErrors++;
+    } else {
+        const auto str = version.asString();
+        post("WARNING: From version %s onwards the preceding error will be a compilation failure, please fix the code "
+             "before updating.\n\n",
+             str.c_str());
+    }
+}
 
 // Forward declare helpers.
 // This means they aren't a part of the public interface of the header.
@@ -565,13 +574,13 @@ PyrClass* getNodeSuperclass(PyrClassNode* node) {
 }
 
 void fillClassPrototypes(PyrClassNode* node, PyrClass* classobj, PyrClass* superclassobj) {
-    PyrVarListNode* varlist;
-    PyrVarDefNode* vardef;
-    PyrSlot *islot, *cslot, *kslot;
-    PyrSymbol **inameslot, **cnameslot, **knameslot;
-    PyrClass* metaclassobj;
-    PyrMethod* method;
-    PyrMethodRaw* methraw;
+    PyrVarListNode* varlist = nullptr;
+    PyrVarDefNode* vardef = nullptr;
+    PyrSlot *islot = nullptr, *cslot = nullptr, *kslot = nullptr;
+    PyrSymbol **inameslot = nullptr, **cnameslot = nullptr, **knameslot = nullptr;
+    PyrClass* metaclassobj = nullptr;
+    PyrMethod* method = nullptr;
+    PyrMethodRaw* methraw = nullptr;
     int instVarIndex, classVarIndex;
 
     // copy superclass's prototype to here
@@ -782,6 +791,58 @@ void fillClassPrototypes(PyrClassNode* node, PyrClass* classobj, PyrClass* super
             }
             break;
         }
+    }
+
+    // Vector seems faster than set here, this could change if we have a lot (100s) of members, but that seems unlikely.
+    auto findDuplicateName =
+        [names = std::vector<PyrSymbol*>()](const PyrSymbolArray* array) mutable -> std::optional<PyrSymbol*> {
+        names.clear();
+        if (array == nullptr || array->size == 0)
+            return std::nullopt; // can be null, meaning, empty.
+
+        names.insert(names.end(), array->symbols, array->symbols + array->size);
+        std::sort(names.begin(), names.end());
+        const auto maybe_duplicate = std::adjacent_find(names.begin(), names.end());
+
+        return (maybe_duplicate != names.end()) ? std::optional<PyrSymbol*> { *maybe_duplicate } : std::nullopt;
+    };
+
+    const auto attemptToPrintDuplicateLocation = [&](const PyrSymbol* duplicate, int varFlagType) {
+        for (auto varlist = node->mVarlists; varlist; varlist = static_cast<PyrVarListNode*>(varlist->mNext)) {
+            if (varlist->mFlags == varFlagType) {
+                for (auto def = varlist->mVarDefs; def; def = static_cast<PyrVarDefNode*>(def->mNext)) {
+                    const auto varName = def->mVarName->mSlot;
+                    assert(varName.isSymbol());
+                    if (varName.getSymbol() == duplicate) {
+                        nodePostErrorLine(def->mVarName);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // In this case, the duplicate was in the parent class.
+        // Since that has to be fixed anyway, and the location has already been printed, let's not print it twice.
+        post("Duplicate found in superclass %s.\n", node->mSuperClassName->mSlot.getSymbol()->name);
+        nodePostErrorLine(node->mClassName);
+    };
+
+    if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->instVarNames))) {
+        error("Found duplicate instance variable name '%s'\n", (*duplicate)->name);
+        attemptToPrintDuplicateLocation(*duplicate, varInst);
+        emitCompilerErrorFromVersion({ 3, 16, 0 });
+    }
+
+    if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->classVarNames))) {
+        error("Found duplicate class variable name '%s'\n", (*duplicate)->name);
+        attemptToPrintDuplicateLocation(*duplicate, varClass);
+        emitCompilerErrorFromVersion({ 3, 16, 0 });
+    }
+
+    if (const auto duplicate = findDuplicateName(slotRawSymbolArray(&classobj->constNames))) {
+        error("Found duplicate const variable name '%s'\n", (*duplicate)->name);
+        attemptToPrintDuplicateLocation(*duplicate, varConst);
+        emitCompilerErrorFromVersion({ 3, 16, 0 });
     }
 }
 
@@ -1842,9 +1903,7 @@ bool isSeries(PyrParseNode* node, PyrParseNode** args) {
 }
 
 void PyrCallNode::compileCall(PyrSlot* result) {
-    int index, selType;
     PyrSlot dummy;
-    bool varFound;
     PyrParseNode* argnode2;
 
     PyrParseNode* argnode = mArglist;
@@ -1855,8 +1914,9 @@ void PyrCallNode::compileCall(PyrSlot* result) {
     int numBlockArgs = METHRAW(gCompilingBlock)->numargs;
 
     slotRawSymbol(&mSelector->mSlot)->flags |= sym_Called;
-    index = conjureSelectorIndex((PyrParseNode*)mSelector, gCompilingBlock, isSuper, slotRawSymbol(&mSelector->mSlot),
-                                 &selType);
+    int selType;
+    auto selectorSlotOrSpecialIndex = conjureSelectorIndex((PyrParseNode*)mSelector, gCompilingBlock, isSuper,
+                                                           slotRawSymbol(&mSelector->mSlot), &selType);
 
     if (numKeyArgs > 0 || (numArgs > 15 && !(selType == selSwitch || selType == selCase))) {
         for (; argnode; argnode = argnode->mNext)
@@ -1866,28 +1926,43 @@ void PyrCallNode::compileCall(PyrSlot* result) {
 
         if (isSuper) {
             emitTailCall();
+            assert(selType == selNormal);
             SendSuperMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                               Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
+                               Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                               Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
         } else {
             switch (selType) {
             case selNormal:
+                // When the selector type is normal, conjureSelectorIndex has added the symbol to the functiondef's
+                // selector array and we just send a normal message.
                 emitTailCall();
                 SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                              Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
+                              Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                              Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 break;
-            case selSpecial:
+
+            case selUnary:
+                [[fallthrough]];
+            case selBinary: {
+                // When the selector is of the type unary or binary, no selector has been emited to the function def.
+                // This is because it is indented to be called with special bytes codes for the unary and binary message
+                // format respectively, however, these do not take kwargs. Therefore, we put the selector into the
+                // function def and use its index for a normal message send.
+                const auto selectorSlotIndex =
+                    conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
+                emitTailCall();
+                SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
+                              Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                              Operands::Index::fromRaw(selectorSlotIndex));
+                break;
+            }
+
+            default:
+                // In this case, the selector is a special one, and we can use the send special message.
                 emitTailCall();
                 SendSpecialMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                                     Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
-                break;
-            case selUnary:
-            case selBinary:
-                index = conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
-                // fall through
-            default:
-                emitTailCall();
-                SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs + 2 * numKeyArgs),
-                              Operands::KwArgumentCount::fromRaw(numKeyArgs), Operands::Index::fromRaw(index));
+                                     Operands::KwArgumentCount::fromRaw(numKeyArgs),
+                                     Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 break;
             }
         }
@@ -1896,16 +1971,16 @@ void PyrCallNode::compileCall(PyrSlot* result) {
             // No need to compile the 'this' arg.
             gFunctionCantBeClosed = true;
             emitTailCall();
-            SendSuperMsgThisOpt.emit(Operands::Index::fromRaw(index));
+            SendSuperMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
         } else {
             for (; argnode; argnode = argnode->mNext)
                 COMPILENODE(argnode, &dummy, false);
             emitTailCall();
             if (SendSuperMsg.validNibble(numArgs)) {
-                SendSuperMsg.emit(numArgs, Operands::Index::fromRaw(index));
+                SendSuperMsg.emit(numArgs, Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             } else {
                 SendSuperMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs), Operands::KwArgumentCount::fromRaw(0),
-                                   Operands::Index::fromRaw(index));
+                                   Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
         }
 
@@ -1920,7 +1995,7 @@ void PyrCallNode::compileCall(PyrSlot* result) {
         case selNormal: {
             if (numArgs == 1 && varname == s_this) {
                 emitTailCall();
-                SendMsgThisOpt.emit(Operands::Index::fromRaw(index));
+                SendMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             } else if (numArgs > 1 && numArgs == numBlockArgs) {
                 switch (checkPushAllArgs(argnode, numArgs)) {
                 case push_Normal:
@@ -1928,13 +2003,13 @@ void PyrCallNode::compileCall(PyrSlot* result) {
 
                 case push_AllArgs: {
                     emitTailCall();
-                    PushAllArgsAndSendMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllArgsAndSendMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 case push_AllButFirstArg: {
                     COMPILENODE(argnode, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstArgAndSendMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstArgAndSendMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -1950,7 +2025,7 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                     COMPILENODE(argnode, &dummy, false);
                     COMPILENODE(argnode->mNext, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstTwoArgsAndSendMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstTwoArgsAndSendMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -1964,10 +2039,10 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                 emitTailCall();
 
                 if (SendMsg.validNibble(numArgs))
-                    SendMsg.emit(numArgs, Operands::Index::fromRaw(index));
+                    SendMsg.emit(numArgs, Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 else
                     SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs), Operands::KwArgumentCount::fromRaw(0),
-                                  Operands::Index::fromRaw(index));
+                                  Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
         } break;
 
@@ -1975,21 +2050,21 @@ void PyrCallNode::compileCall(PyrSlot* result) {
             if (numArgs == 1) {
                 if (varname == s_this) {
                     emitTailCall();
-                    SendSpecialMsgThisOpt.emit(Operands::Index::fromRaw(index));
+                    SendSpecialMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } else if (varname) {
                     if (const auto result = findVarName(gCompilingBlock, gCompilingClass, varname);
                         result && result->varType == varInst) {
                         emitTailCall();
                         PushInstVarAndSendSpecialMsg.emit(Operands::Index::fromRaw(result->index),
-                                                          Operands::Index::fromRaw(index));
+                                                          Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                     } else
                         goto special;
 
                 } else
                     goto special;
 
-            } else if (index == opmDo && isSeries(argnode, &argnode)) {
-                index = opmForSeries;
+            } else if (selectorSlotOrSpecialIndex == opmDo && isSeries(argnode, &argnode)) {
+                selectorSlotOrSpecialIndex = opmForSeries;
                 mArglist = linkNextNode(argnode, mArglist->mNext);
                 numArgs = nodeListLength(mArglist);
                 goto special;
@@ -2001,13 +2076,13 @@ void PyrCallNode::compileCall(PyrSlot* result) {
 
                 case push_AllArgs: {
                     emitTailCall();
-                    PushAllArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 case push_AllButFirstArg: {
                     COMPILENODE(argnode, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstArgAndSendSpecialMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstArgAndSendSpecialMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -2023,7 +2098,7 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                     COMPILENODE(argnode, &dummy, false);
                     COMPILENODE(argnode->mNext, &dummy, false);
                     emitTailCall();
-                    PushAllButFirstTwoArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(index));
+                    PushAllButFirstTwoArgsAndSendSpecialMsg.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 } break;
 
                 default:
@@ -2036,36 +2111,40 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                     COMPILENODE(argnode, &dummy, false);
                 emitTailCall();
                 if (SendSpecialMsg.validNibble(numArgs))
-                    SendSpecialMsg.emit(numArgs, Operands::SpecialSelectors::fromRaw(index));
+                    SendSpecialMsg.emit(numArgs, Operands::SpecialSelectors::fromRaw(selectorSlotOrSpecialIndex));
                 else
                     SendSpecialMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs),
-                                         Operands::KwArgumentCount::fromRaw(0), Operands::Index::fromRaw(index));
+                                         Operands::KwArgumentCount::fromRaw(0),
+                                         Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
             break;
 
         case selUnary: {
             if (numArgs != 1) {
-                index = conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
+                selectorSlotOrSpecialIndex =
+                    conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
                 goto defaultCase;
             }
             for (; argnode; argnode = argnode->mNext)
                 COMPILENODE(argnode, &dummy, false);
 
             emitTailCall();
-            SendSpecialUnaryArithMsgX.emit(Operands::UnaryMath::fromRaw(index));
+            SendSpecialUnaryArithMsgX.emit(Operands::UnaryMath::fromRaw(selectorSlotOrSpecialIndex));
         } break;
 
         case selBinary:
             if (numArgs != 2) {
-                index = conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
+                selectorSlotOrSpecialIndex =
+                    conjureLiteralSlotIndex((PyrParseNode*)mSelector, gCompilingBlock, &mSelector->mSlot);
                 goto defaultCase;
             }
             argnode2 = argnode->mNext;
-            if (index == static_cast<int>(OpBinaryMath::Add) && argnode2->mClassno == pn_PushLitNode
-                && IsInt(&((PyrPushLitNode*)argnode2)->mSlot) && slotRawInt(&((PyrPushLitNode*)argnode2)->mSlot) == 1) {
+            if (selectorSlotOrSpecialIndex == static_cast<int>(OpBinaryMath::Add)
+                && argnode2->mClassno == pn_PushLitNode && IsInt(&((PyrPushLitNode*)argnode2)->mSlot)
+                && slotRawInt(&((PyrPushLitNode*)argnode2)->mSlot) == 1) {
                 COMPILENODE(argnode, &dummy, false);
                 PushOneAndAddOne.emit();
-            } else if (index == opSub && argnode2->mClassno == pn_PushLitNode
+            } else if (selectorSlotOrSpecialIndex == opSub && argnode2->mClassno == pn_PushLitNode
                        && IsInt(&((PyrPushLitNode*)argnode2)->mSlot)
                        && slotRawInt(&((PyrPushLitNode*)argnode2)->mSlot) == 1) {
                 COMPILENODE(argnode, &dummy, false);
@@ -2074,10 +2153,10 @@ void PyrCallNode::compileCall(PyrSlot* result) {
                 COMPILENODE(argnode, &dummy, false);
                 COMPILENODE(argnode->mNext, &dummy, false);
                 emitTailCall();
-                if (index < 16)
-                    SendSpecialBinaryArithMsg.emit(Operands::BinaryMathNibble::fromRaw(index));
+                if (selectorSlotOrSpecialIndex < 16)
+                    SendSpecialBinaryArithMsg.emit(Operands::BinaryMathNibble::fromRaw(selectorSlotOrSpecialIndex));
                 else
-                    SendSpecialBinaryArithMsgX.emit(Operands::BinaryMath::fromRaw(index));
+                    SendSpecialBinaryArithMsgX.emit(Operands::BinaryMath::fromRaw(selectorSlotOrSpecialIndex));
             }
             break;
 
@@ -2134,17 +2213,17 @@ void PyrCallNode::compileCall(PyrSlot* result) {
         defaultCase:
             if (numArgs == 1 && varname == s_this) {
                 emitTailCall();
-                SendMsgThisOpt.emit(Operands::Index::fromRaw(index));
+                SendMsgThisOpt.emit(Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             } else {
                 for (; argnode; argnode = argnode->mNext)
                     COMPILENODE(argnode, &dummy, false);
 
                 emitTailCall();
                 if (SendMsg.validNibble(numArgs))
-                    SendMsg.emit(numArgs, Operands::Index::fromRaw(index));
+                    SendMsg.emit(numArgs, Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
                 else
                     SendMsgX.emit(Operands::ArgumentCount::fromRaw(numArgs), Operands::KwArgumentCount::fromRaw(0),
-                                  Operands::Index::fromRaw(index));
+                                  Operands::Index::fromRaw(selectorSlotOrSpecialIndex));
             }
             break;
         }
@@ -2249,6 +2328,83 @@ bool isAtomicLiteral(PyrParseNode* node) {
             res = true;
     }
     return res;
+}
+
+enum struct UninlinableWarningOption { PostWarning, DontPostWarning };
+
+/// Return the value of a literal, allows literal to be wrap in a single pair of curly braces.
+/// Will post a warning by default if it can't produce a value and is a block.
+template <UninlinableWarningOption Warning = UninlinableWarningOption::PostWarning>
+std::optional<PyrSlot> getAtomicValueFromLiteralOrBlockMaybePostWarning(const PyrParseNode& node) {
+    if (node.mClassno != pn_PushLitNode)
+        return std::nullopt;
+
+    const auto& lit = static_cast<const PyrPushLitNode&>(node);
+    const auto& slot = lit.mSlot;
+
+    // There are no literal objects, arrays don't currently count as literals.
+    if (slot.isObjectHdr())
+        return std::nullopt;
+
+    // A literal object stored in the slot.
+    if (!slot.isPtr())
+        return { slot };
+
+    // The only thing we store in a pointer at this point in the parsing are other parse nodes.
+    // This is a little bit risky, but is wide spread.
+    const auto& maybeBlock = *reinterpret_cast<PyrParseNode*>(slot.getPtr());
+
+    // We are now expecting a block node, then a drop node containing a literal (as expression 1) and a block node
+    // return (as expression 2).
+
+    if (maybeBlock.mClassno != pn_BlockNode)
+        return std::nullopt;
+
+    const auto& block = static_cast<const PyrBlockNode&>(maybeBlock);
+
+    // Having arguments and variables mean we can't inline it, therefore, it isn't a literal.
+    // Printing warnings first if requested to.
+    if constexpr (Warning == UninlinableWarningOption::PostWarning) {
+        const auto postWarning = SC_LanguageConfig::getPostInlineWarnings();
+        if (block.mArglist && postWarning) {
+            post("WARNING: FunctionDef contains argument declarations and so will not be inlined.\n");
+            nodePostErrorLine((PyrParseNode*)block.mArglist);
+        }
+        if (block.mVarlist && postWarning) {
+            post("WARNING: FunctionDef contains variable declarations and so will not be inlined.\n");
+            nodePostErrorLine((PyrParseNode*)block.mVarlist);
+        }
+        if (block.mArglist || block.mVarlist) {
+            gNumUninlinedFunctions += 1;
+            return std::nullopt;
+        }
+    } else {
+        if (block.mArglist || block.mVarlist)
+            return std::nullopt;
+    }
+
+    if (block.mBody->mClassno != pn_DropNode)
+        return std::nullopt;
+
+    const auto& dropNode = *static_cast<PyrDropNode*>(block.mBody);
+
+    // Not a single return statement, e.g., { 1 },
+    if (dropNode.mExpr2->mClassno != pn_BlockReturnNode)
+        return std::nullopt;
+
+    if (dropNode.mExpr1->mClassno != pn_PushLitNode)
+        return std::nullopt;
+
+    const auto& blockedLit = static_cast<PyrPushLitNode&>(*dropNode.mExpr1);
+    const auto& blockedSlot = blockedLit.mSlot;
+    if (blockedSlot.isObjectHdr())
+        return std::nullopt;
+    // We don't allow functions to be literals, e.g., here the value returned would be a function`{ {1} }` but that is
+    // not a literal. Otherwise we could do recursion with tail call for this function.
+    if (blockedSlot.isPtr())
+        return std::nullopt;
+
+    return blockedSlot;
 }
 
 bool isWhileTrue(PyrParseNode* node) {
@@ -2670,23 +2826,38 @@ void compileSwitchMsg(PyrCallNode* node) {
 
         PyrParseNode* nextargnode = nullptr;
         for (; argnode; argnode = nextargnode) {
+            // This loop is confusing, argnode can refer to either the case or the default depending on whether the
+            // nextargnode is nullptr or not.
             nextargnode = argnode->mNext;
-            if (nextargnode != nullptr) {
-                if (!isAtomicLiteral(argnode) && !isAnInlineableAtomicLiteralBlock(argnode)) {
+            if (nextargnode == nullptr) {
+                // argnode is the default, this is how this loop terminates.
+                if (!isAnInlineableBlock(argnode))
                     canInline = false;
-                    break;
-                }
-                if (!isAnInlineableBlock(nextargnode)) {
-                    canInline = false;
-                    break;
-                }
-                nextargnode = nextargnode->mNext;
-            } else {
-                if (!isAnInlineableBlock(argnode)) {
-                    canInline = false;
-                }
+                break; // nothing left, leave.
+            }
+
+            const auto& case_node = argnode;
+            const auto& function_node = nextargnode;
+
+            const auto case_literal = getAtomicValueFromLiteralOrBlockMaybePostWarning(*case_node);
+            if (!case_literal.has_value()) {
+                canInline = false;
                 break;
             }
+
+            // If the case is 'nil', do not inline as the empty element in the identity dictionary is nil.
+            if (case_literal->isNil()) {
+                canInline = false;
+                break;
+            }
+
+            // Check the function after the case.
+            if (!isAnInlineableBlock(function_node)) {
+                canInline = false;
+                break;
+            }
+
+            nextargnode = function_node->mNext;
         }
     }
 
@@ -3387,6 +3558,7 @@ void compileAssignVar(PyrParseNode* node, PyrSymbol* varName, bool drop) {
         error("Variable '%s' not defined.\n", varName->name);
         nodePostErrorLine(node);
         compileErrors++;
+        return;
     }
 
     const FindVarNameResult findResult = *result;
@@ -3652,22 +3824,6 @@ void PyrLitListNode::compile(PyrSlot* result) {
 }
 
 
-PyrLitDictNode* newPyrLitDictNode(PyrParseNode* elems) {
-    PyrLitDictNode* node = ALLOCNODE(PyrLitDictNode);
-    node->mElems = elems;
-
-    return node;
-}
-
-int litDictPut(PyrObject* dict, PyrSlot* key, PyrSlot* value);
-int litDictPut(PyrObject* dict, PyrSlot* key, PyrSlot* value) { return errNone; }
-
-
-void PyrLitDictNode::dump(int level) {}
-
-void PyrLitDictNode::compile(PyrSlot* result) {}
-
-
 extern LongStack closedFuncCharNo;
 extern int lastClosedFuncCharNo;
 
@@ -3858,6 +4014,37 @@ void PyrBlockNode::compile(PyrSlot* slotResult) {
         for (i = 0; i < numVars; ++i, vardef = (PyrVarDefNode*)vardef->mNext) {
             PyrSlot* varslot;
             varslot = &vardef->mVarName->mSlot;
+            const PyrSymbol* name = slotRawSymbol(varslot);
+            if (name == s_this) {
+                error("Cannot redefine 'this'\n");
+                nodePostErrorLine((PyrParseNode*)vardef);
+                emitCompilerErrorFromVersion({ 3, 16, 0 });
+            } else if (name == s_curProcess) {
+                error("Cannot redefine 'thisProcess'\n");
+                nodePostErrorLine((PyrParseNode*)vardef);
+                emitCompilerErrorFromVersion({ 3, 16, 0 });
+            } else if (name == s_curMethod) {
+                error("Cannot redefine 'thisMethod'\n");
+                nodePostErrorLine((PyrParseNode*)vardef);
+                emitCompilerErrorFromVersion({ 3, 16, 0 });
+            } else if (name == s_curBlock) {
+                error("Cannot redefine 'thisFunctionDef'\n");
+                nodePostErrorLine((PyrParseNode*)vardef);
+                emitCompilerErrorFromVersion({ 3, 16, 0 });
+            } else if (name == s_curClosure) {
+                error("Cannot redefine 'thisFunction'\n");
+                nodePostErrorLine((PyrParseNode*)vardef);
+                emitCompilerErrorFromVersion({ 3, 16, 0 });
+            } else if (name == s_curThread) {
+                error("Cannot redefine 'thisThread'\n");
+                nodePostErrorLine((PyrParseNode*)vardef);
+                emitCompilerErrorFromVersion({ 3, 16, 0 });
+            } else if (name == s_super) {
+                error("Cannot redefine 'super'\n");
+                nodePostErrorLine((PyrParseNode*)vardef);
+                emitCompilerErrorFromVersion({ 3, 16, 0 });
+            }
+
             // already declared as arg?
             for (j = 0; j < numArgNames; ++j) {
                 if (blockargs[j] == slotRawSymbol(varslot)) {
@@ -4021,13 +4208,13 @@ int conjureSelectorIndex(PyrParseNode* node, PyrBlock* func, bool isSuper, PyrSy
             return opmLoop;
         } else if (selector == gSpecialSelectors[opmQuestionMark]) {
             *selType = selQuestionMark;
-            return opmAnd; // TODO: why are we returning opmAnd (14) ? Okay the value is ignored.
+            return opmQuestionMark;
         } else if (selector == gSpecialSelectors[opmDoubleQuestionMark]) {
             *selType = selDoubleQuestionMark;
-            return opmAnd; // TODO: why are we returning opmAnd (14) ? Okay the value is ingored
+            return opmDoubleQuestionMark;
         } else if (selector == gSpecialSelectors[opmExclamationQuestionMark]) {
             *selType = selExclamationQuestionMark;
-            return opmAnd; // TODO: why are we returning opmAnd (14) ?  Okay the value is ingored
+            return opmExclamationQuestionMark;
         }
 
         for (i = 0; i < opmNumSpecialSelectors; ++i) {

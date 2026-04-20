@@ -13,20 +13,17 @@ if(MSVC) # hide warnings from 3rd party libraries
 		/wd4127 # conditional expression is constant (nova-simd)
 		/wd4146 # unary minus operator applied to unsigned type, result still unsigned (boost)
 		/wd4189 # local variable is initialized but not referenced (hidapi)
-		/wd4206 # nonstandard extension used: translation unit is empty (portmidi)
 		/wd4244 # conversion from 'type1' to 'type2', possible loss of data (hidapi, boost, nova-simd, portaudio, yaml-cpp)
 		/wd4245 # 'conversion' : conversion from 'type1' to 'type2', signed/unsigned mismatch (hidapi, tlsf, portaudio)
-		/wd4267 # conversion from 'size_t' to 'type', possible loss of data (tlsf, portaudio, portmidi, yaml-cpp)
-		/wd4311 # 'variable': pointer truncation from 'type' to 'type' (tlsf, portmidi)
-		/wd4312 # 'operation': conversion from 'type1' to 'type2' of greater size (portmidi)
+		/wd4267 # conversion from 'size_t' to 'type', possible loss of data (tlsf, portaudio, yaml-cpp)
+		/wd4311 # 'variable': pointer truncation from 'type' to 'type' (tlsf)
 		/wd4389 # 'equality-operator': signed/unsigned mismatch (hidapi
-		/wd4456 # declaration of 'identifier' hides previous local declaration (hidapi, portmidi, yaml-cpp)
+		/wd4456 # declaration of 'identifier' hides previous local declaration (hidapi, yaml-cpp)
 		/wd4457 # declaration of 'identifier' hides function parameter (oscpack)
 		/wd4459 # declaration of 'identifier' hides global declaration (boost, nova-simd)
 		/wd4505 # unreferenced function with internal linkage has been removed (portaudio)
 		/wd4701 # potentially uninitialized local variable used (boost)
 		/wd4702 # unreachable code (yaml-cpp)
-		/wd4706 # assignment used as a condition (portmidi)
 		/wd4996 # function, class member, variable, or typedef marked deprecated (oscpack, portmidi, yaml-cpp)
 	)
 endif()
@@ -179,26 +176,13 @@ set( EXAMPLE_OSC OFF )
 
 if(SC_HIDAPI)
     add_subdirectory(hidapi)
+	set_property(TARGET hidapi_parser PROPERTY FOLDER Libs)
+	set_property(TARGET hidapi PROPERTY FOLDER Libs)
     message(STATUS "Building with HID support")
 else()
     message(STATUS "HID support disabled")
 endif()
 
 if(WIN32)
-  add_library(portmidi portmidi/pm_common/pminternal.h
-                       portmidi/pm_common/pmutil.c
-                       portmidi/pm_common/pmutil.h
-                       portmidi/pm_common/portmidi.c
-                       portmidi/pm_common/portmidi.h
-                       portmidi/pm_win/pmwin.c
-                       portmidi/pm_win/pmwinmm.c
-                       portmidi/pm_win/pmwinmm.h
-                       portmidi/porttime/porttime.c
-                       portmidi/porttime/porttime.h
-                       portmidi/porttime/ptwinmm.c)
-  target_include_directories(portmidi PUBLIC  portmidi/pm_common portmidi/porttime)
-  target_include_directories(portmidi PRIVATE portmidi/pm_win)
-
-  target_link_libraries(portmidi PRIVATE winmm.lib)
-  target_compile_definitions(portmidi INTERFACE HAVE_PORTMIDI)
+  add_subdirectory(portmidi)
 endif()

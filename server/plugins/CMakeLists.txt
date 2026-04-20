@@ -53,9 +53,7 @@ set(plugins "")
 set(supernova_plugins "")
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
-if(APPLE OR WIN32)
-	set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
-endif()
+set(CMAKE_SHARED_MODULE_SUFFIX ".scx")
 
 foreach(plugin ${plugin_sources})
 	string(REPLACE .cpp "" plugin_name ${plugin} )
@@ -135,6 +133,19 @@ add_library(ML_UGens MODULE
 	onsetsds.h
 	${scplugin_common_sources}
 )
+
+if(SC_ABLETON_LINK)
+	add_library(Link_UGen MODULE
+		LinkUGen.cpp
+	)
+	# bug-fix for undefined reference to `GetAdaptersAddresses'
+	if (MINGW)
+		target_link_libraries(Link_UGen PRIVATE iphlpapi)
+	endif()
+	include(../../external_libraries/link/AbletonLinkConfig.cmake)
+	target_link_libraries(Link_UGen PRIVATE Ableton::Link)
+	list(APPEND plugins Link_UGen)
+endif()
 
 if(NOT NO_LIBSNDFILE)
 	set(diskio_sources DiskIO_UGens.cpp)

@@ -40,7 +40,6 @@
 #include "SC_AudioDevicePrim.hpp"
 #include "SC_LanguageConfig.hpp"
 #include "SC_Filesystem.hpp"
-#include "SC_Version.hpp"
 
 #include <map>
 #include <cstdlib>

@@ -20,8 +20,12 @@ endif()
 
 message(STATUS "SuperCollider Version: ${SC_VERSION}")
 message(STATUS "Building from ${GIT_REF_TYPE} ${GIT_BRANCH_OR_TAG}, commit hash is ${GIT_COMMIT_HASH}")
+
+# Stops CTest from generating a bunch of targets we don't care about.
+set_property(GLOBAL PROPERTY CTEST_TARGETS_ADDED 1)
 include(CTest)
 enable_testing()
+list(APPEND CMAKE_CTEST_ARGUMENTS "--output-on-failure")
 
 include (cmake_modules/FinalFile.cmake)
 
@@ -48,6 +52,7 @@ CONFIGURE_FILE(
 
 ADD_CUSTOM_TARGET(uninstall
   "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
+set_property(TARGET uninstall PROPERTY FOLDER Util)
 
 # identify target architecture
 if(WIN32)
@@ -121,7 +126,6 @@ if(WIN32)
 else(WIN32)
     option(NO_AVAHI "Disable Avahi support. (Not recommended.)" OFF)
 endif(WIN32)
-option(NO_GPL3 "Disable GPL3 code, for pure-GPL2 situations. (Not recommended.)" OFF)
 
 option(SCLANG_SERVER "Build with internal server." ON)
 
@@ -414,10 +418,6 @@ endif(MSVC)
 
 if(MINGW)
 	add_compile_options(-mstackrealign)
-endif()
-
-if (NO_GPL3)
-	add_compile_definitions(NO_GPL3)
 endif()
 
 if (SC_MEMORY_DEBUGGING)

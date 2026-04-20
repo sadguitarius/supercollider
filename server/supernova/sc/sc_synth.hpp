@@ -25,6 +25,9 @@
 #include "SC_RGen.h"
 #include "SC_Wire.h"
 
+struct sc_msg_iter;
+
+#include "sc_endpoint.hpp"
 #include "sc_synth_definition.hpp"
 
 #include "../server/synth.hpp"
@@ -34,6 +37,7 @@ namespace nova {
 
 struct sc_unit_cmd {
     sc_unit_cmd* next;
+    detail::endpoint_ptr endpoint;
     int size;
     char data[1];
 };
@@ -48,14 +52,6 @@ public:
     sc_synth(int node_id, sc_synth_definition_ptr const& prototype);
 
     ~sc_synth(void);
-
-    /** run ugen constructors and initialize first sample
-     *
-     *  to be executed after preparing the synth and setting the controls
-     */
-    void prepare(void);
-
-    void finalize(void);
 
     HOT inline void perform(void) {
         if (unlikely(!initialized))
@@ -117,6 +113,15 @@ public:
             run_traced();
     }
 
+private:
+    /** run ugen constructors and initialize first sample
+     *
+     *  to be executed after preparing the synth and setting the controls
+     */
+    void prepare(void);
+
+    void finalize(void);
+
     void prefetch(Unit* unit) {
         char* ptr = (char*)unit;
         char* end = (char*)unit + sizeof(Unit) + 2 * sizeof(Wire) /* + 4 * sizeof(void*)*/;
@@ -132,6 +137,7 @@ public:
         }
     }
 
+public:
     void run(void) override;
 
     void set(slot_index_t slot_index, sample val) override;
@@ -197,9 +203,12 @@ public:
 
     void enable_tracing(void) { trace = 1; }
 
-    void apply_unit_cmd(const char* unit_cmd, unsigned int unit_index, struct sc_msg_iter* args);
+    void apply_unit_cmd(const char* unit_cmd, unsigned int unit_index, sc_msg_iter* args,
+                        detail::endpoint_ptr const& endpoint);
 
 private:
+    void queue_unit_cmd(sc_msg_iter* args, detail::endpoint_ptr const& endpoint);
+
     void run_traced(void);
 
     sample get_constant(size_t index) { return static_cast<sc_synth_definition*>(class_ptr.get())->constants[index]; }

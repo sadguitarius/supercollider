@@ -28,8 +28,8 @@ added prRestartMIDI
 04/feb/03 prListMIDIEndpoints modification by Ron Kuivila added jt.
 */
 
-#include "PortMIDI.h"
-#include "PortTime.h"
+#include "portmidi.h"
+#include "porttime.h"
 
 #include "SCBase.h"
 #include "VMGlobals.h"

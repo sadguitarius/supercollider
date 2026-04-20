@@ -22,6 +22,7 @@
 
 #include "PyrSlot.h"
 #include "PyrKernel.h"
+#include "SC_Version.hpp"
 #include "ByteCodeArray.h"
 #include "Opcodes.h"
 #include "AdvancingAllocPool.h"
@@ -381,15 +382,6 @@ struct PyrLitListNode : public PyrParseNode {
     struct PyrParseNode* mElems;
 };
 
-struct PyrLitDictNode : public PyrParseNode {
-    PyrLitDictNode(): PyrParseNode(pn_LitDictNode) {}
-    virtual ~PyrLitDictNode() {}
-    virtual void compile(PyrSlot* result);
-    virtual void dump(int level);
-
-    struct PyrParseNode* mElems;
-};
-
 extern PyrParseNode* gRootParseNode;
 extern intptr_t gParserResult;
 extern bool gIsTailCodeBranch;
@@ -444,7 +436,6 @@ PyrPushNameNode* newPyrPushNameNode(PyrSlotNode* slotNode);
 PyrDynDictNode* newPyrDynDictNode(PyrParseNode* elems);
 PyrDynListNode* newPyrDynListNode(PyrParseNode* classname, PyrParseNode* elems);
 PyrLitListNode* newPyrLitListNode(PyrParseNode* classname, PyrParseNode* elems);
-PyrLitDictNode* newPyrLitDictNode(PyrParseNode* elems);
 PyrMultiAssignVarListNode* newPyrMultiAssignVarListNode(PyrSlotNode* varNames, PyrSlotNode* rest);
 PyrBlockNode* newPyrBlockNode(PyrArgListNode* arglist, PyrVarListNode* varlist, PyrParseNode* body, bool isTopLevel);
 
@@ -468,6 +459,11 @@ PyrParseNode* linkNextNode(PyrParseNode* a, PyrParseNode* b);
 PyrParseNode* linkAfterHead(PyrParseNode* a, PyrParseNode* b);
 
 extern int compileErrors;
+
+/// Creates a compiler error if current version is greater than or equal to 'version'.
+/// Otherwise posts a warning informing the user to fix their code before updating.
+void emitCompilerErrorFromVersion(SemanticVersion version);
+
 extern int numOverwrites;
 extern std::string overwriteMsg;
 

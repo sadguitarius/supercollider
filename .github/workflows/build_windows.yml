@@ -83,14 +83,14 @@ jobs:
 
       - name: cache vcpkg
         if: matrix.vcpkg-triplet
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/AppData/Local/vcpkg/archives
           key: ${{ runner.os }}-${{ matrix.os-version }}-${{ matrix.cmake-arch }}-${{ matrix.vcpkg-triplet }}-${{ steps.current-date.outputs.stamp }}
           restore-keys: ${{ runner.os }}-${{ matrix.os-version }}-${{ matrix.cmake-arch }}-${{ matrix.vcpkg-triplet }}-
 
       - name: cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/AppData/Local/ccache # updated in ccache 4.7, see https://github.com/ccache/ccache/issues/1023
           key: ${{ runner.os }}-${{ matrix.os-version }}-${{ matrix.cmake-arch }}-${{ matrix.qt-arch }}-${{ steps.current-date.outputs.stamp }}
@@ -172,7 +172,7 @@ jobs:
         run: cd $INSTALL_PATH && 7z a $ARTIFACT_FILE.zip -tzip SuperCollider # this assumes that we end up with the build in the folder SuperCollider
 
       - name: upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: matrix.artifact-suffix
         with:
           name: ${{ env.ARTIFACT_FILE }}
@@ -186,7 +186,7 @@ jobs:
           cmake --build $BUILD_PATH --config Release --target installer
 
       - name: upload installer
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: matrix.create-installer == true
         with:
           name: ${{ env.INSTALLER_FILE }}

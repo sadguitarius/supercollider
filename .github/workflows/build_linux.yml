@@ -95,6 +95,14 @@ jobs:
             shared-libscsynth: false
             ctest: true
 
+          - job-name: "arm64 with ctest"
+            os-version: "24.04-arm"
+            c-compiler: "clang-18"
+            cxx-compiler: "clang++-18"
+            use-syslibs: false
+            shared-libscsynth: false
+            ctest: true
+
     name: Ubuntu ${{ matrix.os-version }} ${{ matrix.c-compiler }} ${{ matrix.job-name }}
     env:
       BUILD_PATH: ${{ github.workspace }}/build
@@ -115,7 +123,7 @@ jobs:
         run: echo "stamp=$(date '+%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.ccache
@@ -165,7 +173,7 @@ jobs:
         run: cd $INSTALL_PATH && zip --symlinks -r $ARTIFACT_FILE.zip .
 
       - name: upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: matrix.artifact-suffix
         with:
           name: ${{ env.ARTIFACT_FILE }}
@@ -185,6 +193,6 @@ jobs:
           Xvfb $DISPLAY -screen 0 1024x768x16 &
 
       - name: Run CTests
-        continue-on-error: true
+        continue-on-error: false
         if: matrix.ctest
         run: cmake --build $BUILD_PATH --config Release --target test

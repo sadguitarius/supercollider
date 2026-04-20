@@ -351,3 +351,5 @@ endif()
 if(${JACK_USE_METADATA_API})
 	target_compile_definitions(libscsynth PUBLIC "-DSC_JACK_USE_METADATA_API")
 endif()
+
+set_property(TARGET libscsynth PROPERTY FOLDER Libs)

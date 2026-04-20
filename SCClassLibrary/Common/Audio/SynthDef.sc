@@ -302,6 +302,7 @@ SynthDef {
 		this.asArray.writeDef(stream);
 		^stream.collection;
 	}
+
 	writeDefFile { arg dir, overwrite(true), mdPlugin;
 		var desc, defFileExistedBefore;
 		if((metadata.tryPerform(\at, \shouldNotSend) ? false).not) {
@@ -323,11 +324,22 @@ SynthDef {
 		}
 	}
 
-	writeDef { arg file;
+	writeDef { arg file, version=3;
 		// This describes the file format for the synthdef files.
-		var allControlNamesTemp, allControlNamesMap;
+		var allControlNamesTemp, allControlNamesMap, byteSize, startPos, endPos;
 
 		try {
+			if (version < 2 or: { version > 3 }) {
+				Error("version number" + version + "out of range").throw
+			};
+
+			if (version > 2) {
+				// save current stream position so we can calculate the SynthDef size.
+				startPos = file.pos;
+				// the SynthDef size in bytes. This will be set at the very end.
+				file.putInt32(0);
+			};
+
 			file.putPascalString(name.asString);
 
 			this.writeConstants(file);
@@ -363,8 +375,7 @@ SynthDef {
 
 					varname = name ++ "." ++ varname;
 					if (varname.size > 32) {
-						Post << "variant '" << varname << "' name too long.\n";
-						^nil
+						Error("variant '%' name too long".format(varname)).throw;
 					};
 					varcontrols = controls.copy;
 					pairs.pairsDo { |cname, values|
@@ -373,9 +384,8 @@ SynthDef {
 						if (cn.notNil) {
 							values = values.asArray;
 							if (values.size > cn.defaultValue.asArray.size) {
-								postf("variant: '%' control: '%' size mismatch.\n",
-									varname, cname);
-								^nil
+								Error("variant: '%' control: '%' size mismatch"
+									.format(varname, cname)).throw;
 							}{
 								index = cn.index;
 								values.do {|val, i|
@@ -383,9 +393,8 @@ SynthDef {
 								}
 							}
 						}{
-							postf("variant: '%' control: '%' not found.\n",
-								varname, cname);
-							^nil
+							Error("variant: '%' control: '%' not found"
+								.format(varname, cname)).throw;
 						}
 					};
 					file.putPascalString(varname);
@@ -394,8 +403,18 @@ SynthDef {
 					};
 				};
 			};
-		} { // catch
-			arg e;
+
+			if (version > 2) {
+				// calculate total size in bytes
+				endPos = file.pos;
+				byteSize = endPos - startPos;
+				// overwrite the size field in the beginning
+				file.pos = startPos;
+				file.putInt32(byteSize);
+				// restore stream position
+				file.pos = endPos;
+			}
+		} { arg e; // catch
 			Error("SynthDef: could not write def: %".format(e.what())).throw;
 		}
 	}
@@ -628,14 +647,14 @@ SynthDef {
 			// should remember what dir synthDef was written to
 			dir = dir ? synthDefDir;
 			this.writeDefFile(dir);
-			server.sendMsg("/d_load", dir ++ name ++ ".scsyndef", completionMsg)
+			server.sendMsg("/d_load", dir +/+ name ++ ".scsyndef", completionMsg)
 		};
 	}
 
 	// write to file and make synth description
 	store { arg libname=\global, dir(synthDefDir), completionMsg, mdPlugin;
 		var lib = SynthDescLib.getLib(libname);
-		var file, path = dir ++ name ++ ".scsyndef";
+		var file, path = dir +/+ name ++ ".scsyndef";
 		if(metadata.falseAt(\shouldNotSend)) {
 			protect {
 				var bytes, desc;
