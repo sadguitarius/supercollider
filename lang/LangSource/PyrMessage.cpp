@@ -19,10 +19,12 @@
 */
 
 #include "PyrMessage.h"
+#include "PyrParseNode.h"
 #include "PyrPrimitiveProto.h"
 #include "PyrInterpreter.h"
 #include "PyrPrimitive.h"
 #include "PyrListPrim.h"
+#include "PyrSlot.h"
 #include "PyrSymbol.h"
 #include "GC.h"
 #include "PredefinedSymbols.h"
@@ -149,7 +151,7 @@ lookup_again:
     // The rest are some form of optimization.
     switch (methodRaw->methType) {
     case methNormal:
-        return executeMethod(g, method, numArgsPushed, numKeyArgsPushed);
+        return setupForMethod(g, method, numArgsPushed, numKeyArgsPushed);
 
     case methReturnSelf: {
         g->sp -= numArgsPushed - 1; // Remove all args but the receiver.
@@ -354,7 +356,7 @@ void doesNotUnderstand(VMGlobals* g, PyrSymbol* selector, std::int64_t numArgsPu
     if (tryUniqueMethod(g, method, receiverSlot, selectorSlot, numArgsPushed, numKeyArgsPushed))
         return;
 
-    executeMethod(g, method, numArgsPushed + 1, numKeyArgsPushed);
+    setupForMethod(g, method, numArgsPushed + 1, numKeyArgsPushed);
 }
 
 
@@ -508,6 +510,7 @@ inline PyrFrame* createFrameForExecuteMethod(VMGlobals* g, PyrBlock* block) {
     SetObject(&frame->method, block);
     SetObject(&frame->homeContext, frame);
     SetObject(&frame->context, frame);
+    frame->expected_stack_depth_after_return = PyrSlot {};
     if (PyrFrame* caller = g->frame; caller != nullptr) {
         SetPtr(&caller->ip, g->ip);
         SetObject(&frame->caller, caller);
@@ -518,7 +521,7 @@ inline PyrFrame* createFrameForExecuteMethod(VMGlobals* g, PyrBlock* block) {
     return frame;
 }
 
-HOT void executeMethod(VMGlobals* g, PyrBlock* meth, std::int64_t totalNumArgsPushed, std::int64_t numKwArgsPushed) {
+HOT void setupForMethod(VMGlobals* g, PyrBlock* meth, std::int64_t totalNumArgsPushed, std::int64_t numKwArgsPushed) {
     prepForTailCall(g);
     const GCSanityChecker gc_sanity_checker(g, "executeMethod");
 
@@ -532,6 +535,9 @@ HOT void executeMethod(VMGlobals* g, PyrBlock* meth, std::int64_t totalNumArgsPu
     g->block = (PyrBlock*)meth;
     g->sp -= totalNumArgsPushed;
     slotCopy(&g->receiver, callFrame->vars);
+
+    // Here, we are expecting this method to return one value to the stack (as all methods do).
+    g->frame->expected_stack_depth_after_return = PyrSlot::make(static_cast<int>(g->gc->StackDepth() + 1));
 }
 
 void switchToThread(VMGlobals* g, PyrThread* newthread, int oldstate, int* numArgsPushed);
@@ -636,6 +642,7 @@ HOT void returnFromMethod(VMGlobals* g) {
         g->frame = nullptr;
         longjmp(g->escapeInterpreter, 2);
     } else {
+        bool yieled = false;
         returnFrame = slotRawFrame(&homeContext->caller);
 
         if (returnFrame == nullptr)
@@ -659,6 +666,7 @@ HOT void returnFromMethod(VMGlobals* g) {
                         slotCopy(g->sp, &value);
 
                         curframe = tempFrame = g->frame;
+                        yieled = true;
                     } else {
                         slotCopy(&g->sp[2], &g->sp[0]);
                         slotCopy(g->sp, &g->receiver);
@@ -672,6 +680,9 @@ HOT void returnFromMethod(VMGlobals* g) {
             }
         }
 
+        std::uint32_t distance { 0 };
+        PyrFrame* one_before_return_frame { nullptr };
+
         {
             PyrFrame* tempFrame = curframe;
             while (tempFrame != returnFrame) {
@@ -684,6 +695,8 @@ HOT void returnFromMethod(VMGlobals* g) {
                     if (tempFrame != homeContext)
                         SetInt(&tempFrame->caller, 0);
                 }
+                ++distance;
+                one_before_return_frame = tempFrame;
                 tempFrame = nextFrame;
             }
         }
@@ -707,6 +720,20 @@ HOT void returnFromMethod(VMGlobals* g) {
 
         g->method = meth;
         slotCopy(&g->receiver, &homeContext->vars[0]);
+
+        // When doing non-local returns, when we have something like.. `try {f.(1, 2, 3, 4, nil[\a])}`
+        // The values f, 1, 2, 3, 4, DoesNotUnderstandError are on the stack.
+        // We need to remove f, 1, 2, 3, 4, leaving the DoesNotUnderstandError.
+        // Don't do this when doing a tail call, that isn't a true non-local return.
+        // Don't do this if yielded to another thread.
+        if (g->tailCall == 0 && !yieled && distance > 1 && one_before_return_frame) {
+            const auto expected = one_before_return_frame->expected_stack_depth_after_return.getInt();
+            const auto current = g->gc->StackDepth();
+            if (expected < current) {
+                g->sp = g->gc->Stack()->slots + std::max(0, expected - 1);
+                *g->sp = g->gc->Stack()->slots[std::max<size_t>(0, current - 1)];
+            }
+        }
     }
 }
 

@@ -2480,7 +2480,7 @@ PyrBlock* newPyrBlock(int flags) {
     int32 numbytes = sizeof(PyrBlock) - sizeof(PyrObjectHdr);
     int32 numSlots = numbytes / sizeof(PyrSlot);
 
-    if (!compilingCmdLine)
+    if (!gCompilingCmdLine)
         block = (PyrBlock*)PyrGC::NewPermanent(numbytes, flags, obj_notindexed);
     else
         block = (PyrBlock*)gMainVMGlobals->gc->New(numbytes, flags, obj_notindexed, false);

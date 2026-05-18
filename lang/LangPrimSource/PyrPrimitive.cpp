@@ -1003,6 +1003,7 @@ HOT int blockValueWithKeys(struct VMGlobals* g, int allArgsPushed, int numKeyArg
     g->sp = args - 1;
     g->ip = slotRawInt8Array(&block->code)->b - 1;
     g->frame = frame;
+    g->frame->expected_stack_depth_after_return = PyrSlot::make(static_cast<int>(g->gc->StackDepth() + 1));
     g->block = block;
 
     return errNone;
@@ -2382,13 +2383,12 @@ int prCompileString(struct VMGlobals* g, int numArgsPushed) {
     // assert(g->gc->SanityCheck());
     startLexerCmdLine(string->s, string->size);
     compileErrors = 0;
-    compilingCmdLine = true;
+    gCompilingCmdLine = true;
     gCompilingVMGlobals = g;
-    compilingCmdLineErrorWindow = false;
     // assert(g->gc->SanityCheck());
-    parseFailed = yyparse();
+    gParseFailed = yyparse();
     // assert(g->gc->SanityCheck());
-    if (!parseFailed && gRootParseNode) {
+    if (!gParseFailed && gRootParseNode) {
         PyrSlot slotResult;
 
         meth = GetFunctionCompileContext(g);
@@ -2420,7 +2420,7 @@ int prCompileString(struct VMGlobals* g, int numArgsPushed) {
             SetObject(a, closure);
         }
     } else {
-        if (parseFailed) {
+        if (gParseFailed) {
             compileErrors++;
             error("Command line parse failed\n");
         } else {
@@ -2433,9 +2433,9 @@ int prCompileString(struct VMGlobals* g, int numArgsPushed) {
 
     pyr_pool_compile->FreeAll();
     // flushErrors();
-    compilingCmdLine = false;
+    gCompilingCmdLine = false;
 
-    return !(parseFailed || compileErrors) ? errNone : errFailed;
+    return !(gParseFailed || compileErrors) ? errNone : errFailed;
 }
 #endif
 
@@ -2727,7 +2727,7 @@ void switchToThread(VMGlobals* g, PyrThread* newthread, int oldstate, int* numAr
     SetRaw(&newthread->sp, (void*)nullptr);
     SetNil(&newthread->receiver);
 
-    SetRaw(&newthread->state, tRunning);
+    SetRaw(&newthread->state, static_cast<int>(tRunning));
 
 
     // set new environment
@@ -3092,7 +3092,7 @@ int prRoutineReset(struct VMGlobals* g, int numArgsPushed) {
     state = slotRawInt(&thread->state);
     // post("->prRoutineReset %d\n", state);
     if (state == tSuspended) {
-        SetRaw(&thread->state, tInit);
+        SetRaw(&thread->state, static_cast<int>(tInit));
         slotRawObject(&thread->stack)->size = 0;
         SetNil(&thread->method);
         SetNil(&thread->block);
@@ -3104,7 +3104,7 @@ int prRoutineReset(struct VMGlobals* g, int numArgsPushed) {
         SetRaw(&thread->numpop, 0);
         SetNil(&thread->parent);
     } else if (state == tDone) {
-        SetRaw(&thread->state, tInit);
+        SetRaw(&thread->state, static_cast<int>(tInit));
         slotRawObject(&thread->stack)->size = 0;
         SetNil(&thread->method);
         SetNil(&thread->block);
@@ -3143,7 +3143,7 @@ int prRoutineStop(struct VMGlobals* g, int numArgsPushed) {
 
     if (state == tSuspended || state == tInit) {
         SetNil(&g->thread->terminalValue);
-        SetRaw(&thread->state, tDone);
+        SetRaw(&thread->state, static_cast<int>(tDone));
         slotRawObject(&thread->stack)->size = 0;
     } else if (state == tDone) {
         // do nothing
@@ -3612,7 +3612,7 @@ void doPrimitive(VMGlobals* g, PyrMethod* meth, int numArgsPushed) {
         // slotRawSymbol(&meth->name)->name);
         SetInt(&g->thread->primitiveIndex, methraw->specialIndex);
         SetInt(&g->thread->primitiveError, err);
-        executeMethod(g, meth, numArgsNeeded, 0);
+        setupForMethod(g, meth, numArgsNeeded, 0);
     }
 #ifdef GC_SANITYCHECK
     g->gc->SanityCheck();
@@ -3658,7 +3658,7 @@ void doPrimitiveWithKeys(VMGlobals* g, PyrMethod* meth, int allArgsPushed, int n
             // post("primerr %d\n", err);
             SetInt(&g->thread->primitiveIndex, methraw->specialIndex);
             SetInt(&g->thread->primitiveError, err);
-            executeMethod(g, meth, allArgsPushed, numKeyArgsPushed);
+            setupForMethod(g, meth, allArgsPushed, numKeyArgsPushed);
         }
 #ifdef GC_SANITYCHECK
         g->gc->SanityCheck();
@@ -3736,7 +3736,7 @@ void doPrimitiveWithKeys(VMGlobals* g, PyrMethod* meth, int allArgsPushed, int n
         // post("primerr %d\n", err);
         SetInt(&g->thread->primitiveIndex, methraw->specialIndex);
         SetInt(&g->thread->primitiveError, err);
-        executeMethod(g, meth, numArgsNeeded, 0);
+        setupForMethod(g, meth, numArgsNeeded, 0);
     }
 #ifdef GC_SANITYCHECK
     g->gc->SanityCheck();

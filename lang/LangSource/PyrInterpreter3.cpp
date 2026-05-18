@@ -39,6 +39,7 @@
 #include <string.h>
 #include <signal.h>
 #include "SpecialSelectorsOperatorsAndClasses.h"
+#include "VMGlobals.h"
 
 #include <float.h>
 #define kBigBigFloat DBL_MAX
@@ -2261,7 +2262,7 @@ HOT void Interpret(VMGlobals* g) {
 
             switch (methraw->methType) {
             case methNormal:
-                storeLoadSpAndIp([&]() { executeMethod(g, meth, numArgsPushed, 0); });
+                storeLoadSpAndIp([&]() { setupForMethod(g, meth, numArgsPushed, 0); });
                 break;
 
             case methReturnSelf:
@@ -2374,7 +2375,7 @@ HOT void Interpret(VMGlobals* g) {
 
             switch (methraw->methType) {
             case methNormal:
-                storeLoadSpAndIp([&]() { executeMethod(g, meth, numArgsPushed, numKeyArgsPushed); });
+                storeLoadSpAndIp([&]() { setupForMethod(g, meth, numArgsPushed, numKeyArgsPushed); });
                 break;
 
             case methReturnSelf:
@@ -2454,10 +2455,6 @@ HOT void Interpret(VMGlobals* g) {
                 sp = g->sp;
                 selector = slotRawSymbol(&meth->selectors);
                 classobj = slotRawSymbol(&slotRawClass(&meth->ownerclass)->superclass)->u.classobj;
-                classobj = slotRawSymbol(&slotRawClass(&meth->ownerclass)->superclass)->u.classobj;
-
-                classobj = slotRawSymbol(&slotRawClass(&meth->ownerclass)->superclass)->u.classobj;
-
                 goto msg_lookup;
 
             case methForwardInstVar:
@@ -2469,10 +2466,6 @@ HOT void Interpret(VMGlobals* g) {
                 index = methraw->specialIndex;
                 slotCopy(slot, &slotRawObject(slot)->slots[index]);
                 classobj = classOfSlot(slot);
-                classobj = classOfSlot(slot);
-
-                classobj = classOfSlot(slot);
-
                 goto msg_lookup;
 
             case methForwardClassVar:
@@ -2483,10 +2476,6 @@ HOT void Interpret(VMGlobals* g) {
                 selector = slotRawSymbol(&meth->selectors);
                 slotCopy(slot, &g->classvars->slots[methraw->specialIndex]);
                 classobj = classOfSlot(slot);
-                classobj = classOfSlot(slot);
-
-                classobj = classOfSlot(slot);
-
                 goto msg_lookup;
 
             case methPrimitive:

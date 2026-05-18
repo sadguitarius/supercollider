@@ -82,10 +82,13 @@ struct PyrFrame : public PyrObjectHdr {
     PyrSlot context;
     PyrSlot homeContext;
     PyrSlot ip;
+    // For non-local returns, sometimes we need to remove stuff from the stack.
+    // This allows us to do that.
+    PyrSlot expected_stack_depth_after_return;
     PyrSlot vars[1];
 };
 
-#define FRAMESIZE 5
+#define FRAMESIZE 6
 
 struct PyrProcess : public PyrObjectHdr {
     PyrSlot classVars;

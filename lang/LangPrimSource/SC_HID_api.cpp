@@ -44,7 +44,7 @@
 
 #include "SC_LanguageClient.h"
 
-extern bool compiledOK;
+extern bool gCompiledOK;
 
 #ifdef HAVE_HIDAPI
 
@@ -377,7 +377,7 @@ void SC_HID_APIManager::deviceClosed(int joy_idx, struct hid_dev_desc* dd, std::
         trace("error when locking language (%d)\n", status);
         return;
     }
-    if (compiledOK) {
+    if (gCompiledOK) {
         VMGlobals* g = gMainVMGlobals;
         g->canCallOS = false;
         ++g->sp;
@@ -400,7 +400,7 @@ void SC_HID_APIManager::handleElement(int joy_idx, struct hid_device_element* el
         return;
     }
 
-    if (compiledOK) {
+    if (gCompiledOK) {
         VMGlobals* g = gMainVMGlobals;
         g->canCallOS = false;
         ++g->sp;
@@ -436,7 +436,7 @@ void SC_HID_APIManager::handleDevice(int joy_idx, struct hid_dev_desc* devd, std
         return;
     }
 
-    if (compiledOK) {
+    if (gCompiledOK) {
         VMGlobals* g = gMainVMGlobals;
         g->canCallOS = false;
         ++g->sp;

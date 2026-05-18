@@ -13,20 +13,23 @@ if(MSVC) # hide warnings from 3rd party libraries
 		/wd4127 # conditional expression is constant (nova-simd)
 		/wd4146 # unary minus operator applied to unsigned type, result still unsigned (boost)
 		/wd4189 # local variable is initialized but not referenced (hidapi)
-		/wd4244 # conversion from 'type1' to 'type2', possible loss of data (hidapi, boost, nova-simd, portaudio, yaml-cpp)
+		/wd4244 # conversion from 'type1' to 'type2', possible loss of data (hidapi, boost, nova-simd, portaudio)
 		/wd4245 # 'conversion' : conversion from 'type1' to 'type2', signed/unsigned mismatch (hidapi, tlsf, portaudio)
-		/wd4267 # conversion from 'size_t' to 'type', possible loss of data (tlsf, portaudio, yaml-cpp)
+		/wd4267 # conversion from 'size_t' to 'type', possible loss of data (tlsf, portaudio)
 		/wd4311 # 'variable': pointer truncation from 'type' to 'type' (tlsf)
 		/wd4389 # 'equality-operator': signed/unsigned mismatch (hidapi
-		/wd4456 # declaration of 'identifier' hides previous local declaration (hidapi, yaml-cpp)
+		/wd4456 # declaration of 'identifier' hides previous local declaration (hidapi)
 		/wd4457 # declaration of 'identifier' hides function parameter (oscpack)
 		/wd4459 # declaration of 'identifier' hides global declaration (boost, nova-simd)
 		/wd4505 # unreferenced function with internal linkage has been removed (portaudio)
 		/wd4701 # potentially uninitialized local variable used (boost)
-		/wd4702 # unreachable code (yaml-cpp)
-		/wd4996 # function, class member, variable, or typedef marked deprecated (oscpack, portmidi, yaml-cpp)
+		/wd4996 # function, class member, variable, or typedef marked deprecated (oscpack, portmidi)
 	)
 endif()
+
+add_subdirectory(utf8proc)
+
+set_property(TARGET utf8proc PROPERTY FOLDER 3rdparty)
 
 if(NOT SYSTEM_PORTAUDIO)
     message(STATUS "PortAudio: building static library")
@@ -137,23 +140,17 @@ if(LTO)
 				 APPEND PROPERTY LINK_FLAGS "-flto -flto-report")
 endif()
 
+# yaml-cpp
 if(NOT SYSTEM_YAMLCPP)
   message(STATUS "Using bundled yaml-cpp")
 
-  # yaml-cpp
-  set(CMAKE_POLICY_VERSION_MINIMUM 3.10) # workaround for cmake 4
-  aux_source_directory(${CMAKE_SOURCE_DIR}/external_libraries/yaml-cpp/src yaml_src)
-  CREATE_FINAL_FILE(${CMAKE_CURRENT_BINARY_DIR}/libyamlcpp.cpp ${yaml_src})
+  set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+  set(YAML_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
-  add_library(yaml STATIC EXCLUDE_FROM_ALL ${CMAKE_CURRENT_BINARY_DIR}/libyamlcpp.cpp)
-  target_include_directories(yaml PUBLIC ${CMAKE_SOURCE_DIR}/external_libraries/yaml-cpp/include ${boost_include_dirs})
-  set_property( TARGET yaml PROPERTY FOLDER 3rdparty )
-  set(YAMLCPP_LIBRARY yaml)
-  set(YAMLCPP_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/external_libraries/yaml-cpp/include)
-
-  if(CMAKE_COMPILER_IS_GNUCXX)
-    target_compile_options(yaml PRIVATE -Wno-deprecated-declarations)
-  endif()
+  add_subdirectory(${CMAKE_SOURCE_DIR}/external_libraries/yaml-cpp EXCLUDE_FROM_ALL)
+  set_property( TARGET yaml-cpp PROPERTY FOLDER 3rdparty )
 
 endif()
 
