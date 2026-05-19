@@ -301,10 +301,10 @@ if(APPLE)
             )
     endif()
 elseif(WIN32)
-    if(MINGW)
+    if(NOT MSVC)
       target_link_libraries(scsynth "-municode")
       set_target_properties(scsynth libscsynth PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif()
+    endif(NOT MSVC)
 
     if(FFTW3F_FOUND)
       file(GLOB FFTW3F_DLL "${FFTW3F_LIBRARY_DIR}/*fftw3f*.dll")
@@ -341,7 +341,7 @@ elseif(WIN32)
     add_custom_command(TARGET scsynth
       POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:scsynth> $<TARGET_FILE_DIR:sclang>
-      COMMENT "Mirroring scsynth.exe into sclang build dir"
+      COMMENT "Adding scynth to target sclang"
     )
     if(LIBSCSYNTH)
       add_custom_command(TARGET scsynth
@@ -354,7 +354,7 @@ elseif(WIN32)
       add_custom_command(TARGET scsynth
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:scsynth> $<TARGET_FILE_DIR:SuperCollider>
-        COMMENT "Mirroring scsynth.exe into SuperCollider build dir"
+        COMMENT "Adding scynth to target SuperCollider"
       )
       if(LIBSCSYNTH)
         add_custom_command(TARGET scsynth

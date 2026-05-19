@@ -336,8 +336,8 @@ if (GC_SANITYCHECK)
 	target_compile_definitions(libsclang PUBLIC GC_SANITYCHECK)
 endif()
 
-if(WIN32)
-    target_compile_definitions(libsclang PUBLIC HAVE_ISXDIGIT)
+if(MSVC)
+    target_compile_definitions(libsclang PUBLIC HAVE_ISXDIGIT) # needed for MSVC 2022
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -371,9 +371,9 @@ if(APPLE)
             )
     endif()
 elseif(WIN32)
-    if(MINGW)
+    if(NOT MSVC)
         set_target_properties(sclang PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif()
+    endif(NOT MSVC)
 
     target_compile_definitions(sclang PUBLIC UNICODE _UNICODE)
 
@@ -408,14 +408,14 @@ elseif(WIN32)
           POST_BUILD
           COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_sclang_runtime_files} $<TARGET_FILE_DIR:SuperCollider>
           COMMAND "${CMAKE_SOURCE_DIR}/platform/windows/junctions.sh" "create" "${CMAKE_SOURCE_DIR}" "$<TARGET_FILE_DIR:sclang>"
-          COMMENT "Mirroring sclang into scide build dir and ensuring SCClassLibrary junctions"
+          COMMENT "Copying files in target sclang to target SuperCollider (scide) and creating links to SCClassLibrary e.a."
         )
       else()
         add_custom_command(TARGET sclang
           POST_BUILD
           COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_sclang_runtime_files} $<TARGET_FILE_DIR:SuperCollider>
           COMMAND cmd /C "\"\"${CMAKE_SOURCE_DIR}/platform/windows/junctions.bat\" create \"$<TARGET_FILE_DIR:sclang>\" \"${CMAKE_SOURCE_DIR}\"\""
-          COMMENT "Mirroring sclang into scide build dir and ensuring SCClassLibrary junctions"
+          COMMENT "Copying files in target sclang to target SuperCollider (scide) and creating links to SCClassLibrary e.a."
         )
       endif()
     endif(SC_IDE)

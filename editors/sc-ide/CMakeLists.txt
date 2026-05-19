@@ -395,9 +395,9 @@ if(APPLE)
 
 elseif(WIN32)
 
-    if(MINGW)
+    if(NOT MSVC)
         set_target_properties(SuperCollider PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif()
+    endif(NOT MSVC)
 
     if(MSYS)
       add_custom_command(TARGET SuperCollider
