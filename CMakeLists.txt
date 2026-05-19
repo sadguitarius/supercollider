@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.12)
 # pick up vcpkg installation, if VCPKG_ROOT is set
 if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE AND NOT "$ENV{VCPKG_ROOT}" STREQUAL "")
     set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+endif()
+if(CMAKE_TOOLCHAIN_FILE)
     message(STATUS "Using CMAKE_TOOLCHAIN_FILE at ${CMAKE_TOOLCHAIN_FILE}")
 endif()
 

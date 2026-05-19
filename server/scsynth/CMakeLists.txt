@@ -301,17 +301,25 @@ if(APPLE)
             )
     endif()
 elseif(WIN32)
-    if(NOT MSVC)
+    if(MINGW)
       target_link_libraries(scsynth "-municode")
       set_target_properties(scsynth libscsynth PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif(NOT MSVC)
+    endif()
 
     if(FFTW3F_FOUND)
       file(GLOB FFTW3F_DLL "${FFTW3F_LIBRARY_DIR}/*fftw3f*.dll")
       add_custom_command(TARGET scsynth
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FFTW3F_DLL}" $<TARGET_FILE_DIR:scsynth>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FFTW3F_DLL}" $<TARGET_FILE_DIR:sclang>
       )
+      if(SC_IDE)
+        add_custom_command(TARGET scsynth
+          POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FFTW3F_DLL}" $<TARGET_FILE_DIR:SuperCollider>
+        )
+      endif()
+      install(FILES ${FFTW3F_DLL} DESTINATION "${SC_WIN_BUNDLE_NAME}")
     endif(FFTW3F_FOUND)
 
     if(SNDFILE_FOUND)
@@ -319,21 +327,41 @@ elseif(WIN32)
       add_custom_command(TARGET scsynth
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SNDFILE_DLL}" $<TARGET_FILE_DIR:scsynth>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SNDFILE_DLL}" $<TARGET_FILE_DIR:sclang>
       )
+      if(SC_IDE)
+        add_custom_command(TARGET scsynth
+          POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SNDFILE_DLL}" $<TARGET_FILE_DIR:SuperCollider>
+        )
+      endif()
+      install(FILES ${SNDFILE_DLL} DESTINATION "${SC_WIN_BUNDLE_NAME}")
     endif(SNDFILE_FOUND)
 
     add_custom_command(TARGET scsynth
       POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:scsynth> $<TARGET_FILE_DIR:sclang>
-      COMMENT "Adding scynth to target sclang"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:scsynth> $<TARGET_FILE_DIR:sclang>
+      COMMENT "Mirroring scsynth.exe into sclang build dir"
     )
+    if(LIBSCSYNTH)
+      add_custom_command(TARGET scsynth
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:libscsynth> $<TARGET_FILE_DIR:sclang>
+      )
+    endif()
 
     if(SC_IDE)
       add_custom_command(TARGET scsynth
         POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:scsynth> $<TARGET_FILE_DIR:SuperCollider>
-        COMMENT "Adding scynth to target SuperCollider"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:scsynth> $<TARGET_FILE_DIR:SuperCollider>
+        COMMENT "Mirroring scsynth.exe into SuperCollider build dir"
       )
+      if(LIBSCSYNTH)
+        add_custom_command(TARGET scsynth
+          POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:libscsynth> $<TARGET_FILE_DIR:SuperCollider>
+        )
+      endif()
     endif(SC_IDE)
 
     install(TARGETS ${INSTALL_TARGETS}

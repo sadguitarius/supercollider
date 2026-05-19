@@ -395,9 +395,9 @@ if(APPLE)
 
 elseif(WIN32)
 
-    if(NOT MSVC)
+    if(MINGW)
         set_target_properties(SuperCollider PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif(NOT MSVC)
+    endif()
 
     if(MSYS)
       add_custom_command(TARGET SuperCollider
@@ -442,16 +442,6 @@ elseif(WIN32)
     if(QT_BIN_PATH)
       list(APPEND SC_WIN_DLL_DIRS "${QT_BIN_PATH}")
     endif(QT_BIN_PATH)
-
-    # run fixup_bundle prior to deployment to get FFTW, libsndfile, MSVC, and Qt libs
-    # will run windeployqt afterward to auto-deploy QtWebEngine dependencies
-    install(CODE
-        "
-            include(BundleUtilities)
-            fixup_bundle(\"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/sclang.exe\" \"\" \"${SC_WIN_DLL_DIRS}\")
-        "
-    )
-
 
 else()
   install(TARGETS SuperCollider
@@ -550,6 +540,7 @@ if(APPLE OR WIN32)
         find_program(DEPLOY_PROG windeployqt PATHS ${CMAKE_PREFIX_PATH})
         set(DEPLOY_CMD "\"${DEPLOY_PROG}\"
                 --verbose 1 --no-compiler-runtime
+                \"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/scide.exe\"
                 \"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/sclang.exe\"
             ")
         set(VERIFY_CMD "")

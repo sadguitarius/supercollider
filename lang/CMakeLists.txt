@@ -336,8 +336,8 @@ if (GC_SANITYCHECK)
 	target_compile_definitions(libsclang PUBLIC GC_SANITYCHECK)
 endif()
 
-if(MSVC)
-    target_compile_definitions(libsclang PUBLIC HAVE_ISXDIGIT) # needed for MSVC 2022
+if(WIN32)
+    target_compile_definitions(libsclang PUBLIC HAVE_ISXDIGIT)
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -371,9 +371,9 @@ if(APPLE)
             )
     endif()
 elseif(WIN32)
-    if(NOT MSVC)
+    if(MINGW)
         set_target_properties(sclang PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-    endif(NOT MSVC)
+    endif()
 
     target_compile_definitions(sclang PUBLIC UNICODE _UNICODE)
 
@@ -391,27 +391,31 @@ elseif(WIN32)
           POST_BUILD
           COMMAND ${CMAKE_COMMAND} -E copy_if_different "${READLINE_DLL}" $<TARGET_FILE_DIR:sclang>
       )
+      install(FILES ${READLINE_DLL} DESTINATION "${SC_WIN_BUNDLE_NAME}")
     endif(READLINE_LIBRARY_DIR)
     if(QT_BIN_PATH)
       list(APPEND SC_WIN_DLL_DIRS "${QT_BIN_PATH}")
     endif(QT_BIN_PATH)
 
     if(SC_IDE)
+      set(_sclang_runtime_files $<TARGET_FILE:sclang>)
+      if(READLINE_LIBRARY_DIR)
+        list(APPEND _sclang_runtime_files ${READLINE_DLL})
+      endif()
+
       if(MSYS)
         add_custom_command(TARGET sclang
           POST_BUILD
-          COMMAND "${CMAKE_SOURCE_DIR}/platform/windows/junctions.sh" "remove" "$<TARGET_FILE_DIR:sclang>"
-          COMMAND ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:sclang> $<TARGET_FILE_DIR:SuperCollider>
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_sclang_runtime_files} $<TARGET_FILE_DIR:SuperCollider>
           COMMAND "${CMAKE_SOURCE_DIR}/platform/windows/junctions.sh" "create" "${CMAKE_SOURCE_DIR}" "$<TARGET_FILE_DIR:sclang>"
-          COMMENT "Copying files in target sclang to target SuperCollider (scide) and creating links to SCClassLibrary e.a."
+          COMMENT "Mirroring sclang into scide build dir and ensuring SCClassLibrary junctions"
         )
       else()
         add_custom_command(TARGET sclang
           POST_BUILD
-          COMMAND cmd /C "\"\"${CMAKE_SOURCE_DIR}/platform/windows/junctions.bat\" remove \"$<TARGET_FILE_DIR:sclang>\"\""
-          COMMAND ${CMAKE_COMMAND} -E copy_directory $<TARGET_FILE_DIR:sclang> $<TARGET_FILE_DIR:SuperCollider>
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_sclang_runtime_files} $<TARGET_FILE_DIR:SuperCollider>
           COMMAND cmd /C "\"\"${CMAKE_SOURCE_DIR}/platform/windows/junctions.bat\" create \"$<TARGET_FILE_DIR:sclang>\" \"${CMAKE_SOURCE_DIR}\"\""
-          COMMENT "Copying files in target sclang to target SuperCollider (scide) and creating links to SCClassLibrary e.a."
+          COMMENT "Mirroring sclang into scide build dir and ensuring SCClassLibrary junctions"
         )
       endif()
     endif(SC_IDE)
@@ -441,19 +445,6 @@ elseif(WIN32)
             )
         endforeach()
     endif(SC_QT)
-
-    if(NOT SC_IDE)
-        install(CODE "
-            include(BundleUtilities)
-            fixup_bundle(
-                \"${CMAKE_INSTALL_PREFIX}/${SC_WIN_BUNDLE_NAME}/sclang.exe\"
-                \"\"
-                \"${SC_WIN_DLL_DIRS}\" )
-            "
-            COMMENT "Looking for libraries..."
-            VERBATIM
-        )
-    endif(NOT SC_IDE)
 
 else()
     install(TARGETS sclang
