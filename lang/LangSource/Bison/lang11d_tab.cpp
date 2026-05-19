@@ -2490,7 +2490,6 @@ yyreduce:
                         {
 				yyval = (intptr_t)newPyrCallNode((yyloc), (PyrSlotNode*)yyvsp[-1], (PyrParseNode*)yyvsp[0], 0, 0);
 			}
-#line 2404 "lang11d_tab.cpp"
 #line 2494 "lang/LangSource/Bison/lang11d_tab.cpp"
     break;
 
@@ -2499,7 +2498,6 @@ yyreduce:
                         {
 				yyval = (intptr_t)newPyrCallNode((yyloc), (PyrSlotNode*)yyvsp[-2], (PyrParseNode*)yyvsp[0], 0, 0);
 			}
-#line 2412 "lang11d_tab.cpp"
 #line 2502 "lang/LangSource/Bison/lang11d_tab.cpp"
     break;
 

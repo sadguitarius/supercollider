@@ -371,9 +371,9 @@ if(APPLE)
             )
     endif()
 elseif(WIN32)
-	if(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
+    if(NOT MSVC)
         set_target_properties(sclang PROPERTIES RUNTIME_OUTPUT_DIRECTORY "$<CONFIG>")
-	endif(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
+    endif(NOT MSVC)
 
     target_compile_definitions(sclang PUBLIC UNICODE _UNICODE)
 
